@@ -2694,6 +2694,131 @@ def _student_form_data(cur):
     return _student_academic_rows(cur)
 
 
+def _student_bulk_dir():
+    path = os.path.join(tempfile.gettempdir(), 'e_progress_card_student_bulk')
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _student_excel_value(value):
+    if value is None:
+        return ''
+    if hasattr(value, 'strftime'):
+        return value.strftime('%Y-%m-%d')
+    return str(value).strip()
+
+
+def _read_student_excel(path):
+    aliases = {
+        'register_number': {'register_number', 'register_no', 'register', 'roll_no', 'roll_number'},
+        'student_name': {'student_name', 'name', 'student'},
+        'email': {'email', 'student_email'},
+        'phone': {'phone', 'mobile', 'mobile_number', 'phone_number'},
+        'dob': {'dob', 'date_of_birth', 'birth_date'},
+    }
+    ext = os.path.splitext(path)[1].lower()
+    records = []
+    if ext == '.csv':
+        with open(path, 'r', encoding='utf-8-sig', newline='') as fh:
+            reader = csv.DictReader(fh)
+            if not reader.fieldnames:
+                raise ValueError('The CSV file has no header row.')
+            headers = {_normalize_excel_header(h): h for h in reader.fieldnames}
+            mapped = {field: next((headers[name] for name in names if name in headers), None) for field, names in aliases.items()}
+            missing = [field.replace('_', ' ').title() for field in aliases if not mapped[field]]
+            if missing:
+                raise ValueError('Missing Excel columns: ' + ', '.join(sorted(missing)))
+            for row_no, row in enumerate(reader, start=2):
+                values = {field: _student_excel_value(row.get(column)) for field, column in mapped.items()}
+                if any(values.values()):
+                    values['_row_no'] = row_no
+                    records.append(values)
+    elif ext == '.xlsx':
+        wb = load_workbook(path, read_only=True, data_only=True)
+        try:
+            ws = wb.active
+            header = next(ws.iter_rows(min_row=1, max_row=1, values_only=True), None)
+            if not header:
+                raise ValueError('The Excel file has no header row.')
+            headers = {_normalize_excel_header(value): index for index, value in enumerate(header) if value is not None}
+            mapped = {field: next((headers[name] for name in names if name in headers), None) for field, names in aliases.items()}
+            missing = [field.replace('_', ' ').title() for field in aliases if mapped[field] is None]
+            if missing:
+                raise ValueError('Missing Excel columns: ' + ', '.join(sorted(missing)))
+            for row_no, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+                values = {field: _student_excel_value(row[index] if index < len(row) else '') for field, index in mapped.items()}
+                if any(values.values()):
+                    values['_row_no'] = row_no
+                    records.append(values)
+        finally:
+            wb.close()
+    else:
+        raise ValueError('Only .xlsx and .csv files are supported.')
+    return records
+
+
+def _validate_student_bulk(conn, rows, department_id, class_id):
+    cur = conn.cursor(dictionary=True)
+    try:
+        cur.execute('SELECT id, department_name FROM departments WHERE id=%s', (department_id,))
+        department = cur.fetchone()
+        cur.execute('SELECT id, department_id, class_name FROM classes WHERE id=%s AND department_id=%s', (class_id, department_id))
+        selected_class = cur.fetchone()
+        if not department or not selected_class:
+            raise ValueError('Selected class does not belong to the selected department.')
+        cur.execute('SELECT * FROM ep_department_batches WHERE department_id=%s LIMIT 1', (department_id,))
+        batch = cur.fetchone()
+        if not batch:
+            raise ValueError('No academic batch is configured for the selected department.')
+        context = _academic_context(batch, selected_class['class_name'])
+        cur.execute('SELECT register_number, email, phone FROM students')
+        existing = cur.fetchall()
+        existing_registers = {str(row['register_number']).strip().upper() for row in existing if row.get('register_number')}
+        existing_emails = {str(row['email']).strip().lower() for row in existing if row.get('email')}
+        existing_phones = {str(row['phone']).strip() for row in existing if row.get('phone')}
+        seen_registers, seen_emails, seen_phones = set(), set(), set()
+        output = []
+        for index, row in enumerate(rows, start=1):
+            register_number = _student_excel_value(row.get('register_number')).upper()
+            student_name = _student_excel_value(row.get('student_name'))
+            email = _student_excel_value(row.get('email')).lower()
+            phone = _student_excel_value(row.get('phone'))
+            dob = _student_excel_value(row.get('dob'))
+            errors = []
+            if not register_number:
+                errors.append('Register Number is required')
+            elif register_number in existing_registers or register_number in seen_registers:
+                errors.append('Register Number already exists or is duplicated')
+            if not student_name:
+                errors.append('Student Name is required')
+            if not email or not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+', email):
+                errors.append('Valid Email is required')
+            elif email in existing_emails or email in seen_emails:
+                errors.append('Email already exists or is duplicated')
+            if not phone or not phone.isdigit() or len(phone) != 10:
+                errors.append('Phone number must contain exactly 10 digits')
+            elif phone in existing_phones or phone in seen_phones:
+                errors.append('Phone already exists or is duplicated')
+            try:
+                dob = _student_login_password_from_dob(dob)
+            except ValueError as exc:
+                errors.append(str(exc))
+            valid = not errors
+            if valid:
+                seen_registers.add(register_number)
+                seen_emails.add(email)
+                seen_phones.add(phone)
+            output.append({
+                'sno': index, 'row_no': row.get('_row_no', index + 1),
+                'register_number': register_number, 'student_name': student_name,
+                'email': email, 'phone': phone, 'dob': dob,
+                'valid': valid, 'status': 'Valid' if valid else 'Invalid', 'errors': errors,
+            })
+        return output, department, selected_class, batch, context
+    finally:
+        cur.close()
+
+
 @app.route('/admin/students/add',methods=['GET','POST'])
 def add_student():
     if not admin_required(): return redirect(url_for('login'))
