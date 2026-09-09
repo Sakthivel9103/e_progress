@@ -41,5 +41,48 @@
       null,
       null
     ]
+  },
+  "5": {
+    "section_a": [
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2
+    ],
+    "section_b": [
+      {
+        "choice": "A",
+        "mark": 4.0
+      },
+      {
+        "choice": "B",
+        "mark": 4.0
+      },
+      {
+        "choice": "B",
+        "mark": 5.0
+      },
+      {
+        "choice": "B",
+        "mark": 5.0
+      },
+      {
+        "choice": "B",
+        "mark": 5.0
+      }
+    ],
+    "section_c": [
+      8,
+      8,
+      8,
+      null,
+      null
+    ]
   }
 }
