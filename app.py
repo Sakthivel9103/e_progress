@@ -18,14 +18,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 app = Flask(__name__)
-
 app.secret_key = config.SECRET_KEY
-
-
-# ============================================================
-# DATABASE CONNECTION
-# ============================================================
-
 def get_db_connection():
     return mysql.connector.connect(
         host=config.DB_HOST,
@@ -34,19 +27,7 @@ def get_db_connection():
         database=config.DB_NAME,
         port=config.DB_PORT
     )
-
-
-
-# ============================================================
-# MULTI-SEMESTER ACADEMIC LAYER
-# ============================================================
-# The existing project tables are intentionally not altered.  A small
-# compatibility layer stores academic-year/semester relationships in new
-# prefixed tables.  Existing marks remain in the original marks table.
-
 SEMESTER_SCHEMA_READY = False
-
-
 def _infer_year_from_class(class_name):
     text = (class_name or "").lower()
     if "1st" in text or "first" in text:
@@ -56,23 +37,17 @@ def _infer_year_from_class(class_name):
     if "3rd" in text or "third" in text:
         return 3
     return 1
-
-
 def _year_label_for_class(class_name):
     """Return a readable academic-year label for a class name."""
     year_no = _infer_year_from_class(class_name)
     suffix = {1: 'st', 2: 'nd', 3: 'rd'}.get(year_no, 'th')
     return f'{year_no}{suffix} Year'
-
-
 def _infer_course_type(course_name):
     """Infer UG/PG from the course/program name.
-
     The program type is never entered manually. Known PG degree keywords are
     checked first. Legacy/unknown names remain UG-compatible.
     """
     raw = (course_name or '').upper().strip()
-
     pg_patterns = (
         r'(?<![A-Z0-9])MCA(?![A-Z0-9])',
         r'(?<![A-Z0-9])M\.?SC(?![A-Z0-9])',
@@ -85,13 +60,9 @@ def _infer_course_type(course_name):
     )
     if any(re.search(pattern, raw) for pattern in pg_patterns):
         return "PG"
-
     if re.search(r'\bMASTER(?:S)?\b|\bPOST\s*GRADUATE\b|\bPOSTGRADUATE\b', raw):
         return "PG"
-
     return "UG"
-
-
 def _department_code_from_name(course_name):
     """Generate the legacy department_code automatically from course name."""
     raw = (course_name or '').upper()
@@ -105,14 +76,10 @@ def _department_code_from_name(course_name):
         return 'COURSE'
     initials = ''.join(w[0] for w in words if w)
     return (initials or words[0])[:20]
-
-
 def _course_type_for_department(cursor, department_id):
     cursor.execute("SELECT department_name FROM departments WHERE id=%s", (department_id,))
     row = cursor.fetchone() or {}
     return _infer_course_type(row.get("department_name", ""))
-
-
 def _ensure_column(cursor, table_name, column_name, definition):
     """Create a column if it is missing from an existing table."""
     cursor.execute(
@@ -122,8 +89,6 @@ def _ensure_column(cursor, table_name, column_name, definition):
     )
     if not cursor.fetchone():
         cursor.execute(f"ALTER TABLE `{table_name}` ADD COLUMN `{column_name}` {definition}")
-
-
 def ensure_application_schema():
     """Create the legacy app tables and columns used by the admin dashboard."""
     conn = get_db_connection()
@@ -138,7 +103,6 @@ def ensure_application_schema():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS departments (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -148,7 +112,6 @@ def ensure_application_schema():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS classes (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -157,7 +120,6 @@ def ensure_application_schema():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS faculty (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -169,7 +131,6 @@ def ensure_application_schema():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS students (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -183,7 +144,6 @@ def ensure_application_schema():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS subjects (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -194,7 +154,6 @@ def ensure_application_schema():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS class_subjects (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -203,7 +162,6 @@ def ensure_application_schema():
                 UNIQUE KEY uq_class_subject (class_id, subject_id)
             )
         """)
-
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS marks (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -222,7 +180,6 @@ def ensure_application_schema():
                 UNIQUE KEY uq_marks_student_subject (student_id, subject_id)
             )
         """)
-
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS ep_faculty_details (
                 faculty_id INT PRIMARY KEY,
@@ -231,7 +188,6 @@ def ensure_application_schema():
                 address TEXT DEFAULT NULL
             )
         """)
-
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS ep_student_details (
                 student_id INT PRIMARY KEY,
@@ -240,20 +196,15 @@ def ensure_application_schema():
                 address TEXT DEFAULT NULL
             )
         """)
-
         _ensure_column(cursor, 'departments', 'hod_name', 'VARCHAR(150) DEFAULT NULL')
         _ensure_column(cursor, 'departments', 'department_code', 'VARCHAR(50) DEFAULT NULL')
         _ensure_column(cursor, 'departments', 'department_name', 'VARCHAR(150) NOT NULL')
         _ensure_column(cursor, 'faculty', 'class_id', 'INT DEFAULT NULL')
-
         conn.commit()
     finally:
         cursor.close(); conn.close()
-
-
 def save_department_batch(cur, department_id, course_type, start_year):
     """Create/update the department academic batch from START YEAR only.
-
     UG = 3 academic years, PG = 2 academic years.
     The admin never supplies an end year.
     """
@@ -261,14 +212,11 @@ def save_department_batch(cur, department_id, course_type, start_year):
         start = int(str(start_year).strip())
     except (TypeError, ValueError):
         raise ValueError('Start Year must be a valid year, for example 2026.')
-
     if start < 2000 or start > 2100:
         raise ValueError('Start Year must be between 2000 and 2100.')
-
     expected = 3 if course_type == 'UG' else 2
     end = start + expected
     batch = f'{start}-{end}'
-
     cur.execute("""
         INSERT INTO ep_department_batches
             (department_id,course_type,start_year,end_year,course_duration)
@@ -279,41 +227,33 @@ def save_department_batch(cur, department_id, course_type, start_year):
             end_year=VALUES(end_year),
             course_duration=VALUES(course_duration)
     """, (department_id, course_type, start, end, batch))
-
     for y in range(start, end):
         name = f'{y}-{y+1}'
         cur.execute(
             "INSERT IGNORE INTO ep_academic_years(year_name,is_active) VALUES(%s,0)",
             (name,)
         )
-
     return start, end, batch
-
 def sync_class_semesters(cur):
     """Automatically derive semester mappings from department batch + class year.
     No manual Semester Management is required. Existing data is preserved.
     """
-    # This helper is called with both dictionary cursors and normal MySQL
-    # tuple cursors in the existing project.  Read rows safely in either form.
     cur.execute("SELECT id,department_id,class_name FROM classes ORDER BY id")
     classes = cur.fetchall()
     for c in classes:
         class_id = c["id"] if isinstance(c, dict) else c[0]
         department_id = c["department_id"] if isinstance(c, dict) else c[1]
         class_name = c["class_name"] if isinstance(c, dict) else c[2]
-
         cur.execute("SELECT course_type,start_year,end_year FROM ep_department_batches WHERE department_id=%s LIMIT 1", (department_id,))
         batch = cur.fetchone()
         if not batch:
             continue
         course_type = batch["course_type"] if isinstance(batch, dict) else batch[0]
         start_year = batch["start_year"] if isinstance(batch, dict) else batch[1]
-
         year_no = _infer_year_from_class(class_name)
         max_years = 3 if course_type == "UG" else 2
         if year_no > max_years:
             continue
-
         target_start = int(start_year) + year_no - 1
         year_name = f"{target_start}-{target_start+1}"
         cur.execute("SELECT id FROM ep_academic_years WHERE year_name=%s LIMIT 1", (year_name,))
@@ -321,7 +261,6 @@ def sync_class_semesters(cur):
         if not yr:
             continue
         academic_year_id = yr["id"] if isinstance(yr, dict) else yr[0]
-
         max_sem = 6 if course_type == "UG" else 4
         for sem in ((year_no * 2) - 1, year_no * 2):
             if sem > max_sem:
@@ -332,8 +271,6 @@ def sync_class_semesters(cur):
                 VALUES(%s,%s,%s,%s,%s,'A')
                 ON DUPLICATE KEY UPDATE course_type=VALUES(course_type),year_no=VALUES(year_no)
             """, (class_id, academic_year_id, course_type, year_no, sem))
-
-
 def ensure_semester_schema():
     global SEMESTER_SCHEMA_READY
     if SEMESTER_SCHEMA_READY:
@@ -341,9 +278,6 @@ def ensure_semester_schema():
     conn = get_db_connection()
     cur = conn.cursor(dictionary=True)
     try:
-        # Subjects are a master list. Department/class are assigned later through
-        # the Faculty Subject / Class assignment process, so allow these legacy
-        # columns to remain empty for newly-created master subjects.
         try:
             for col in ("department_id", "class_id"):
                 cur.execute("""SELECT COLUMN_TYPE, IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS
@@ -352,14 +286,7 @@ def ensure_semester_schema():
                 if meta and str(meta.get("IS_NULLABLE", "YES")).upper() == "NO":
                     cur.execute(f"ALTER TABLE subjects MODIFY `{col}` {meta['COLUMN_TYPE']} NULL")
         except Exception:
-            # Keep compatibility with older databases where the legacy table is
-            # created after this startup hook.
             pass
-
-        # Legacy marks tables in some installations were created with ca1/ca2
-        # as NOT NULL. Question-wise entry is intentionally saved in stages
-        # (CIA 1 first, CIA 2 later), so unfinished components must be nullable.
-        # Migrate only the nullability and preserve the existing column types.
         try:
             for col in ("ca1", "ca2", "assignment", "external", "internal", "total", "grade", "result", "appreciation"):
                 cur.execute("""SELECT COLUMN_TYPE, IS_NULLABLE
@@ -369,12 +296,7 @@ def ensure_semester_schema():
                 if meta and str(meta.get("IS_NULLABLE", "YES")).upper() == "NO":
                     cur.execute(f"ALTER TABLE marks MODIFY `{col}` {meta['COLUMN_TYPE']} NULL")
         except Exception:
-            # The legacy marks table may not exist yet on a fresh installation.
             pass
-
-        # Older installations may have grade/result columns created as NOT NULL.
-        # Marks are saved assessment-by-assessment, so these calculated fields must
-        # remain empty until all components are available.
         try:
             for col in ("grade", "result", "appreciation"):
                 cur.execute("""SELECT COLUMN_TYPE, IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS
@@ -384,9 +306,6 @@ def ensure_semester_schema():
                     cur.execute(f"ALTER TABLE marks MODIFY `{col}` {meta['COLUMN_TYPE']} NULL")
         except Exception:
             pass
-
-        # Result visibility is used by the Admin dashboard and Student Results.
-        # Older installations may not have this table, so create and seed it here.
         cur.execute("""
             CREATE TABLE IF NOT EXISTS result_settings (
                 id INT PRIMARY KEY,
@@ -400,7 +319,6 @@ def ensure_semester_schema():
             VALUES (1, 0)
             ON DUPLICATE KEY UPDATE id = id
         """)
-
         cur.execute("""
             CREATE TABLE IF NOT EXISTS ep_academic_years (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -465,21 +383,14 @@ def ensure_semester_schema():
                 UNIQUE KEY uq_ep_fac_assign (faculty_id, academic_year_id, semester_no, class_id, subject_id)
             )
         """)
-        # Subject-to-class semester mapping must allow the same master subject
-        # to be used by different classes in the same academic year/semester.
-        # Older versions used (subject_id, academic_year_id, semester_no) only,
-        # which incorrectly blocked that valid scenario. Migrate the unique key
-        # when it exists; no Subject Master data is changed.
         try:
             cur.execute("SHOW INDEX FROM ep_subject_semesters WHERE Key_name='uq_ep_sub_sem'")
             if cur.fetchall():
                 cur.execute("ALTER TABLE ep_subject_semesters DROP INDEX uq_ep_sub_sem")
             cur.execute("ALTER TABLE ep_subject_semesters ADD UNIQUE KEY uq_ep_sub_sem (subject_id,class_id,academic_year_id,semester_no)")
         except mysql.connector.Error as e:
-            # Duplicate-safe / already-migrated compatibility.
             if getattr(e, 'errno', None) not in (1061, 1091):
                 raise
-
         cur.execute("""
             CREATE TABLE IF NOT EXISTS ep_student_semesters (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -555,8 +466,6 @@ def ensure_semester_schema():
                     VALUES(%s,%s,%s,%s)
                     ON DUPLICATE KEY UPDATE semester_label=VALUES(semester_label)
                 """, (ctype, sem, year_no, label))
-
-        # Prefer an existing academic_years table when the user's DB has one.
         names=[]
         try:
             cur.execute("SELECT year_name FROM academic_years ORDER BY year_name")
@@ -576,19 +485,13 @@ def ensure_semester_schema():
             row=cur.fetchone()
             if row:
                 cur.execute("UPDATE ep_academic_years SET is_active=1 WHERE id=%s", (row["id"],))
-
         cur.execute("SELECT id,year_name FROM ep_academic_years ORDER BY id")
         years=cur.fetchall()
         active_id=next((r["id"] for r in years if r.get("year_name")), None)
         cur.execute("SELECT id FROM ep_academic_years WHERE is_active=1 LIMIT 1")
         ar=cur.fetchone()
         active_id=ar["id"] if ar else active_id
-
-        # Automatically derive each class's two semesters from its department batch.
-        # The legacy classes table does not contain a section column, so use the
-        # compatibility layer's default section only internally.
         sync_class_semesters(cur)
-
         cur.execute("SELECT id,class_id FROM subjects")
         for sub in cur.fetchall():
             cur.execute("SELECT academic_year_id,year_no,semester_no FROM ep_class_semesters WHERE class_id=%s ORDER BY academic_year_id,semester_no",(sub["class_id"],))
@@ -599,7 +502,6 @@ def ensure_semester_schema():
                     VALUES(%s,%s,%s,%s)
                     ON DUPLICATE KEY UPDATE class_id=VALUES(class_id)
                 """,(sub["id"],sub["class_id"],cm["academic_year_id"],cm["semester_no"]))
-
         cur.execute("SELECT id,class_id FROM students")
         for st in cur.fetchall():
             cur.execute("SELECT academic_year_id,year_no,semester_no,section FROM ep_class_semesters WHERE class_id=%s ORDER BY academic_year_id,semester_no",(st["class_id"],))
@@ -610,15 +512,10 @@ def ensure_semester_schema():
                     VALUES(%s,%s,%s,%s,%s,%s,'Current')
                     ON DUPLICATE KEY UPDATE year_no=VALUES(year_no),class_id=VALUES(class_id),section=VALUES(section)
                 """,(st["id"],cm["academic_year_id"],cm["semester_no"],cm["year_no"],st["class_id"],cm["section"] or 'A'))
-        # Do not auto-assign every subject from the legacy class-level faculty
-        # field. Exact Faculty + Class + Subject + Semester mappings are managed
-        # explicitly by Admin in ep_faculty_assignments.
         conn.commit()
         SEMESTER_SCHEMA_READY=True
     finally:
         cur.close(); conn.close()
-
-
 @app.before_request
 def _ensure_multi_semester_layer():
     if request.endpoint not in {"static"}:
@@ -636,11 +533,7 @@ def _ensure_multi_semester_layer():
                 cur.close()
                 conn.close()
         except Exception:
-            # Log the real cause so Railway logs show why Faculty/Student pages
-            # failed, while still keeping the app available during temporary DB issues.
             app.logger.exception("Database initialization failed during request handling.")
-
-
 def _active_academic_start_year(cursor):
     ay = get_active_academic_year(cursor)
     if not ay:
@@ -649,11 +542,8 @@ def _active_academic_start_year(cursor):
         return int(str(ay["year_name"]).split("-")[0])
     except Exception:
         return None
-
-
 def cleanup_passed_out_students(cur):
     """Remove only expired student operational data.
-
     Faculty, departments and Subject Master are never deleted. A student is
     considered passed out when the department batch end year is before the
     currently active academic year's start year.
@@ -674,8 +564,6 @@ def cleanup_passed_out_students(cur):
     placeholders=','.join(['%s']*len(ids))
     cur.execute(f"SELECT user_id FROM students WHERE id IN ({placeholders}) AND user_id IS NOT NULL", ids)
     user_ids=[r['user_id'] for r in cur.fetchall()]
-    # Delete student-scoped compatibility data first. Legacy tables are checked
-    # defensively so this works with old installations too.
     for table,col in [('ep_student_semesters','student_id'),('ep_question_marks','student_id'),
                       ('ep_assignment_marks','student_id'),('marks','student_id')]:
         try:
@@ -686,8 +574,6 @@ def cleanup_passed_out_students(cur):
         cur.execute(f"DELETE FROM ep_student_details WHERE student_id IN ({placeholders})", ids)
     except mysql.connector.Error:
         pass
-    # Remove expired operational teaching context for departments whose batch
-    # has finished; keep faculty and Subject Master untouched.
     try:
         cur.execute("""
             DELETE a FROM ep_faculty_assignments a
@@ -708,9 +594,6 @@ def cleanup_passed_out_students(cur):
         user_placeholders=','.join(['%s']*len(user_ids))
         cur.execute(f"DELETE FROM users WHERE id IN ({user_placeholders}) AND role='student'", user_ids)
     return len(ids)
-
-
-
 def auto_rollover_academic_year(cur):
     """Automatically set the current academic year; rollover happens every June 1."""
     today = date.today()
@@ -720,8 +603,6 @@ def auto_rollover_academic_year(cur):
     cur.execute("UPDATE ep_academic_years SET is_active=0")
     cur.execute("UPDATE ep_academic_years SET is_active=1 WHERE year_name=%s", (year_name,))
     return year_name
-
-
 def sync_current_active_semesters(cur):
     """Expose only the semesters belonging to each department's current batch year."""
     active = get_active_academic_year(cur)
@@ -752,27 +633,19 @@ def sync_current_active_semesters(cur):
                 VALUES(%s,%s,%s,%s,%s,'A')
                 ON DUPLICATE KEY UPDATE course_type=VALUES(course_type),year_no=VALUES(year_no),section=VALUES(section)""",
                 (class_id,active_id,ctype,current_year,sem))
-
-
 def enforce_active_assignment_year(cur, academic_year_id):
     active=get_active_academic_year(cur)
     if not active or int(active['id']) != int(academic_year_id):
         raise ValueError('Assignments can be created only for the active academic year.')
-
-
 def get_academic_years(cursor):
     cursor.execute("SELECT id,year_name,is_active FROM ep_academic_years ORDER BY year_name DESC")
     return cursor.fetchall()
-
-
 def get_active_academic_year(cursor):
     cursor.execute("SELECT id,year_name FROM ep_academic_years WHERE is_active=1 LIMIT 1")
     row=cursor.fetchone()
     if row: return row
     cursor.execute("SELECT id,year_name FROM ep_academic_years ORDER BY id DESC LIMIT 1")
     return cursor.fetchone()
-
-
 def get_faculty_semesters(cursor, faculty_id, academic_year_id=None):
     if academic_year_id is None:
         ay=get_active_academic_year(cursor); academic_year_id=ay["id"] if ay else 0
@@ -784,11 +657,8 @@ def get_faculty_semesters(cursor, faculty_id, academic_year_id=None):
         ORDER BY a.semester_no
     """, (faculty_id,academic_year_id))
     return cursor.fetchall()
-
-
 def _ensure_faculty_student_semester_mappings(cursor, faculty_id, academic_year_id):
     """Self-heal student semester rows for classes actually assigned to a faculty.
-
     Older/legacy student records keep their current class in students.class_id.
     Some databases created before the semester layer can therefore have valid
     faculty assignments but no matching ep_student_semesters rows, which makes
@@ -827,8 +697,6 @@ def _ensure_faculty_student_semester_mappings(cursor, faculty_id, academic_year_
               a.get('section') or 'A', a['class_id']))
         changed += max(int(getattr(cursor, 'rowcount', 0) or 0), 0)
     return changed
-
-
 def get_faculty_subjects_for_semester(cursor, faculty_id, semester_no, academic_year_id):
     cursor.execute("""
         SELECT a.subject_id,s.subject_code,s.subject_name,a.class_id,c.class_name,a.section,
@@ -840,37 +708,23 @@ def get_faculty_subjects_for_semester(cursor, faculty_id, semester_no, academic_
         ORDER BY s.subject_name
     """, (faculty_id,semester_no,academic_year_id))
     return cursor.fetchall()
-
-
 def get_selected_faculty_semester(cursor, faculty_id):
     """Return ONLY the current active academic year and one of its assigned semesters.
-
     A faculty request cannot switch to a historical academic year by query-string
     manipulation. This is the central access rule used by all faculty mark pages.
     """
     ay = get_active_academic_year(cursor)
     if not ay:
         return None, None, []
-
-    # Academic year is deliberately NOT read from request.args/request.form.
     active_year_id = int(ay["id"])
     sem = request.args.get("semester", type=int)
     if sem is None:
         sem = request.form.get("semester", type=int)
-
     available = get_faculty_semesters(cursor, faculty_id, active_year_id)
     valid = [int(x["semester_no"]) for x in available]
-
     if sem not in valid:
         sem = valid[0] if valid else None
-
     return ay, sem, available
-
-
-# ============================================================
-# ADMIN - ACADEMIC YEARS / SEMESTER SETUP
-# ============================================================
-
 @app.route("/admin/academic-years")
 def admin_academic_years():
     """Display-only Academic Year page. The active year is fully automatic."""
@@ -878,7 +732,6 @@ def admin_academic_years():
         return redirect(url_for("login"))
     conn=get_db_connection(); cur=conn.cursor(dictionary=True)
     try:
-        # June 1 rollover is automatic; no admin action is allowed.
         auto_rollover_academic_year(cur)
         sync_current_active_semesters(cur)
         conn.commit()
@@ -886,8 +739,6 @@ def admin_academic_years():
         return render_template("admin/academic_years.html", active=active)
     finally:
         cur.close(); conn.close()
-
-
 @app.route("/admin/semester-setup")
 def admin_semester_setup():
     if not admin_required(): return redirect(url_for("login"))
@@ -906,14 +757,12 @@ def admin_semester_setup():
         classes=cur.fetchall()
         return render_template("admin/semester_setup.html",years=years,active=active,mappings=mappings,classes=classes)
     finally: cur.close(); conn.close()
-
-
 @app.route("/admin/semester-setup/save", methods=["POST"])
 def admin_semester_setup_save():
     if not admin_required(): return redirect(url_for("login"))
     conn=get_db_connection(); cur=conn.cursor(dictionary=True)
     try:
-        ay=int(request.form.get("academic_year_id")); class_id=int(request.form.get("class_id")); sem=int(request.form.get("semester_no")); section='A' 
+        ay=int(request.form.get("academic_year_id")); class_id=int(request.form.get("class_id")); sem=int(request.form.get("semester_no")); section='A'
         cur.execute("SELECT department_id FROM classes WHERE id=%s",(class_id,)); row=cur.fetchone()
         if not row: raise ValueError("Class not found.")
         ctype=_course_type_for_department(cur,row["department_id"]); maxsem=6 if ctype=="UG" else 4
@@ -929,14 +778,11 @@ def admin_semester_setup_save():
         conn.rollback(); flash(str(e),"danger")
     finally: cur.close(); conn.close()
     return redirect(url_for("admin_semester_setup"))
-
-
 @app.route("/admin/faculty-assignments", methods=["GET", "POST"])
 @app.route("/admin/faculty-subject-assignments", methods=["GET", "POST"])
 @app.route("/faculty-subject-assignments", methods=["GET", "POST"])
 def admin_faculty_assignments():
     """Admin Faculty Subject Assignment manager.
-
     One faculty is shown once on the main page.  Individual assignment rows
     remain normalized in ep_faculty_assignments so the Faculty Dashboard can
     later use the exact Faculty + Subject + Class + Academic Year + Semester
@@ -944,7 +790,6 @@ def admin_faculty_assignments():
     """
     if not admin_required():
         return redirect(url_for("login"))
-
     conn = get_db_connection()
     cur = conn.cursor(dictionary=True)
     try:
@@ -952,8 +797,6 @@ def admin_faculty_assignments():
         sync_class_semesters(cur)
         sync_current_active_semesters(cur)
         conn.commit()
-
-        # Keep the old single-assignment POST working for compatibility.
         if request.method == "POST":
             try:
                 faculty_id = int(request.form.get("faculty_id"))
@@ -966,7 +809,6 @@ def admin_faculty_assignments():
                 subject_ids = list(dict.fromkeys(int(x) for x in subject_ids if str(x).isdigit()))
                 if not subject_ids:
                     raise ValueError("Please select at least one subject.")
-
                 _validate_assignment_context(cur, faculty_id, class_id, academic_year_id, semester_no)
                 added, duplicates, repeat_conflicts = _insert_faculty_subject_assignments(
                     cur, faculty_id, class_id, academic_year_id, semester_no, subject_ids
@@ -986,7 +828,6 @@ def admin_faculty_assignments():
             except mysql.connector.Error as e:
                 conn.rollback()
                 flash(_friendly_db_error(e, "Unable to save assignment."), "danger")
-
         cur.execute("SELECT id,faculty_name FROM faculty ORDER BY faculty_name")
         faculty_rows = cur.fetchall()
         cur.execute("SELECT id,department_name,department_code FROM departments ORDER BY department_name")
@@ -1006,7 +847,6 @@ def admin_faculty_assignments():
             ORDER BY cs.academic_year_id DESC,cs.class_id,cs.semester_no
         """)
         class_semester_rows = cur.fetchall()
-
         cur.execute("""
             SELECT a.id,a.faculty_id,f.faculty_name,
                    c.id AS class_id,c.class_name,c.department_id,
@@ -1027,8 +867,6 @@ def admin_faculty_assignments():
             ORDER BY f.faculty_name,ay.year_name DESC,a.semester_no,c.class_name,s.subject_name
         """)
         assignment_rows = cur.fetchall()
-
-        # JSON-friendly faculty → assignments map for the shared View/Edit modal.
         assignments_by_faculty = {}
         for row in assignment_rows:
             item = dict(row)
@@ -1039,7 +877,6 @@ def admin_faculty_assignments():
             item["semester_label"] = f"Semester {item.get('semester_no')}"
             item["subject_label"] = f"{item.get('subject_code')} - {item.get('subject_name')}"
             assignments_by_faculty.setdefault(str(item["faculty_id"]), []).append(item)
-
         grouped = []
         for f in faculty_rows:
             rows = assignments_by_faculty.get(str(f["id"]), [])
@@ -1048,7 +885,6 @@ def admin_faculty_assignments():
                 "faculty_name": f["faculty_name"],
                 "assignment_count": len(rows),
             })
-
         return render_template(
             "admin/assignments.html",
             faculties=grouped,
@@ -1064,22 +900,15 @@ def admin_faculty_assignments():
     finally:
         cur.close()
         conn.close()
-
-
 def _roman_year(number):
     return {1: "I", 2: "II", 3: "III", 4: "IV"}.get(int(number), str(number))
-
-
 def _friendly_db_error(error, fallback):
     if getattr(error, "errno", None) == 1062:
         return "This subject is already assigned for the selected Class, Academic Year and Semester."
     return fallback
-
-
 def _validate_assignment_context(cur, faculty_id, class_id, academic_year_id, semester_no):
     """Validate the exact assignment context and create the class/year mapping
     on demand when it is missing.
-
     Classes such as ``1st Year`` are reusable across academic years.  The old
     implementation only allowed academic years that happened to have a legacy
     ``ep_class_semesters`` row, which caused the Academic Year dropdown to show
@@ -1088,25 +917,18 @@ def _validate_assignment_context(cur, faculty_id, class_id, academic_year_id, se
     cur.execute("SELECT id FROM faculty WHERE id=%s LIMIT 1", (faculty_id,))
     if not cur.fetchone():
         raise ValueError("Selected faculty was not found.")
-
     cur.execute("SELECT id,department_id,class_name FROM classes WHERE id=%s LIMIT 1", (class_id,))
     cls = cur.fetchone()
     if not cls:
         raise ValueError("Selected class was not found.")
-
     enforce_active_assignment_year(cur, academic_year_id)
     cur.execute("SELECT id,year_name FROM ep_academic_years WHERE id=%s LIMIT 1", (academic_year_id,))
     selected_academic_year = cur.fetchone()
     if not selected_academic_year:
         raise ValueError("Selected academic year was not found.")
-
     year_no = _infer_year_from_class(cls.get("class_name"))
     if not year_no:
         raise ValueError("Unable to determine the selected Class / Year.")
-
-    # A department owns its academic structure.  Department creation creates:
-    # UG -> 3 academic years, PG -> 2 academic years.  The selected class year
-    # maps to exactly one year in that department batch (1st=start, 2nd=start+1...).
     cur.execute("SELECT course_type,start_year,end_year FROM ep_department_batches WHERE department_id=%s LIMIT 1", (cls["department_id"],))
     batch = cur.fetchone()
     if not batch:
@@ -1115,17 +937,9 @@ def _validate_assignment_context(cur, faculty_id, class_id, academic_year_id, se
     max_years = 3 if course_type == "UG" else 2
     if int(year_no) < 1 or int(year_no) > max_years:
         raise ValueError("The selected Class / Year is not valid for this department.")
-
-    # Class labels are reusable every intake. The active academic year is the
-    # authoritative working context, so do not lock "2nd Year" forever to the
-    # original department creation year.
-
     allowed_semesters = ((int(year_no) * 2) - 1, int(year_no) * 2)
     if int(semester_no) not in allowed_semesters:
         raise ValueError("The selected semester does not belong to the selected Class / Year.")
-
-    # A Class / Year can be used in any Academic Year.  Ensure both semesters
-    # for that year exist before validating the selected semester.
     for sem in allowed_semesters:
         cur.execute("""
             INSERT INTO ep_class_semesters
@@ -1134,7 +948,6 @@ def _validate_assignment_context(cur, faculty_id, class_id, academic_year_id, se
             ON DUPLICATE KEY UPDATE
                 course_type=VALUES(course_type), year_no=VALUES(year_no)
         """, (class_id, academic_year_id, course_type, year_no, sem))
-
     cur.execute("""
         SELECT id,year_no,section FROM ep_class_semesters
         WHERE class_id=%s AND academic_year_id=%s AND semester_no=%s LIMIT 1
@@ -1143,11 +956,8 @@ def _validate_assignment_context(cur, faculty_id, class_id, academic_year_id, se
     if not mapping:
         raise ValueError("Unable to create the selected class, academic year and semester context.")
     return mapping
-
-
 def _cohort_start_year(cur, class_id, academic_year_id, semester_no):
     """Return the student cohort start year for a class/semester context.
-
     Example: a UG Year-1 Semester-1/2 in 2026-27 belongs to the 2026 cohort;
     Year-2 Semester-3/4 in 2027-28 belongs to the same 2026 cohort.
     This lets us prevent the same subject from being repeated across later
@@ -1171,11 +981,8 @@ def _cohort_start_year(cur, class_id, academic_year_id, semester_no):
         return (row.get('department_id') if isinstance(row, dict) else row[0]), start - year_no + 1
     except Exception:
         return (row.get('department_id') if isinstance(row, dict) else row[0]), None
-
-
 def _subject_repeat_conflict(cur, subject_id, class_id, academic_year_id, semester_no, exclude_assignment_id=None):
     """Find an earlier/later semester using the same subject for the same cohort.
-
     The rule is cohort-aware: a subject taken by AI 2026-27 students in
     Semester 1 cannot be assigned again to that same cohort in Semesters 2-6,
     but a new AI batch may use the same subject.
@@ -1183,7 +990,6 @@ def _subject_repeat_conflict(cur, subject_id, class_id, academic_year_id, semest
     department_id, cohort_start = _cohort_start_year(cur, class_id, academic_year_id, semester_no)
     if department_id is None or cohort_start is None:
         return None
-
     cur.execute("""
         SELECT a.id, a.semester_no, ay.year_name, c.class_name, s.subject_code, s.subject_name
         FROM ep_faculty_assignments a
@@ -1212,8 +1018,6 @@ def _subject_repeat_conflict(cur, subject_id, class_id, academic_year_id, semest
         if row_cohort == cohort_start:
             return row
     return None
-
-
 def _insert_faculty_subject_assignments(cur, faculty_id, class_id, academic_year_id, semester_no, subject_ids):
     added = 0
     duplicates = 0
@@ -1231,7 +1035,6 @@ def _insert_faculty_subject_assignments(cur, faculty_id, class_id, academic_year
         if cur.fetchone():
             duplicates += 1
             continue
-
         conflict = _subject_repeat_conflict(cur, subject_id, class_id, academic_year_id, semester_no)
         if conflict:
             code = subject.get('subject_code') if isinstance(subject, dict) else None
@@ -1239,7 +1042,6 @@ def _insert_faculty_subject_assignments(cur, faculty_id, class_id, academic_year
             label = code or name or str(subject_id)
             repeat_conflicts.append(label)
             continue
-
         cur.execute("""
             INSERT INTO ep_faculty_assignments
               (faculty_id,academic_year_id,semester_no,class_id,subject_id,section)
@@ -1248,8 +1050,6 @@ def _insert_faculty_subject_assignments(cur, faculty_id, class_id, academic_year
         _ensure_class_subject_mapping(cur, subject_id, class_id, academic_year_id, semester_no)
         added += 1
     return added, duplicates, repeat_conflicts
-
-
 def _ensure_class_subject_mapping(cur, subject_id, class_id, academic_year_id, semester_no):
     """Connect the master subject to the selected class/context without
     changing Subject Master fields.  Safe for legacy databases."""
@@ -1272,8 +1072,6 @@ def _ensure_class_subject_mapping(cur, subject_id, class_id, academic_year_id, s
     except mysql.connector.Error as e:
         if getattr(e, "errno", None) != 1062:
             raise
-
-
 @app.route("/admin/faculty-assignments/bulk-add", methods=["POST"])
 def admin_faculty_assignments_bulk_add():
     if not admin_required():
@@ -1305,8 +1103,6 @@ def admin_faculty_assignments_bulk_add():
     finally:
         cur.close(); conn.close()
     return redirect(url_for("admin_faculty_assignments"))
-
-
 @app.route("/admin/faculty-assignments/bulk-delete", methods=["POST"], endpoint="admin_faculty_assignments_bulk_delete")
 def admin_faculty_assignments_bulk_delete():
     if not admin_required():
@@ -1322,9 +1118,6 @@ def admin_faculty_assignments_bulk_delete():
         if not rows:
             raise ValueError("No valid assignments were selected.")
         cur.execute(f"DELETE FROM ep_faculty_assignments WHERE id IN ({placeholders})", tuple(ids))
-
-        # Remove compatibility mappings only when no other faculty assignment
-        # still uses the exact class/subject/context.
         for row in rows:
             cur.execute("""
                 SELECT COUNT(*) AS n FROM ep_faculty_assignments
@@ -1344,7 +1137,6 @@ def admin_faculty_assignments_bulk_delete():
     finally:
         cur.close(); conn.close()
     return redirect(url_for("admin_faculty_assignments"))
-
 @app.route("/admin/faculty-assignments/edit/<int:assignment_id>", methods=["POST"])
 def admin_faculty_assignment_edit(assignment_id):
     if not admin_required():
@@ -1357,7 +1149,6 @@ def admin_faculty_assignment_edit(assignment_id):
         semester_no = int(request.form.get("semester_no"))
         class_id = int(request.form.get("class_id"))
         subject_id = int(request.form.get("subject_id"))
-
         cur.execute("SELECT department_id FROM faculty WHERE id=%s", (faculty_id,))
         f = cur.fetchone()
         cur.execute("SELECT department_id FROM classes WHERE id=%s", (class_id,))
@@ -1378,22 +1169,15 @@ def admin_faculty_assignment_edit(assignment_id):
         """, (faculty_id, academic_year_id, semester_no, class_id, subject_id, assignment_id))
         if cur.fetchone():
             raise ValueError("This faculty-subject assignment already exists.")
-
-        # A subject belongs to one semester for one student cohort. Do not allow
-        # moving/editing an assignment to a semester where this cohort already
-        # has the same subject (the current row itself is ignored).
         conflict = _subject_repeat_conflict(cur, subject_id, class_id, academic_year_id, semester_no, exclude_assignment_id=assignment_id)
         if conflict:
             raise ValueError("This subject is already used in another semester for the same student batch. A subject cannot be repeated across Semesters 1-6 for that cohort.")
-
         cur.execute("""
             UPDATE ep_faculty_assignments
             SET faculty_id=%s, academic_year_id=%s, semester_no=%s,
                 class_id=%s, subject_id=%s
             WHERE id=%s
         """, (faculty_id, academic_year_id, semester_no, class_id, subject_id, assignment_id))
-        # Keep the assignment mappings in sync when an existing assignment is
-        # moved to a class/semester. The Subject Master itself remains unchanged.
         try:
             cur.execute("SELECT 1 FROM class_subjects WHERE class_id=%s AND subject_id=%s LIMIT 1", (class_id, subject_id))
             if not cur.fetchone():
@@ -1420,8 +1204,6 @@ def admin_faculty_assignment_edit(assignment_id):
         cur.close()
         conn.close()
     return redirect(url_for("admin_faculty_assignments"))
-
-
 @app.route("/admin/faculty-assignments/delete/<int:assignment_id>", methods=["POST"])
 def admin_faculty_assignment_delete(assignment_id):
     if not admin_required():
@@ -1439,49 +1221,25 @@ def admin_faculty_assignment_delete(assignment_id):
         cur.close()
         conn.close()
     return redirect(url_for("admin_faculty_assignments"))
-
-# ============================================================
-# AUTHENTICATION HELPERS
-# ============================================================
-
 def admin_required():
     return "user_id" in session and session.get("role") == "admin"
-
-
 def student_logged_in():
     """Boolean helper for student-session checks.
-
     Kept separate from the @student_required decorator below so route
     authorization cannot be accidentally overwritten.
     """
     return "user_id" in session and session.get("role") == "student"
-
-
-# ============================================================
-# LANDING PAGE
-# ============================================================
-
 @app.route("/")
 def index():
     return render_template("index.html")
-
-
-# ============================================================
-# LOGIN
-# ============================================================
-
 @app.route("/login", methods=["GET", "POST"])
 def login():
-
     if request.method == "POST":
-
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
-
         if not username or not password:
             flash("Please enter username and password.", "danger")
             return render_template("login.html")
-
         try:
             db = get_db_connection()
             cursor = db.cursor(dictionary=True)
@@ -1498,13 +1256,9 @@ def login():
                 cursor.close()
             if "db" in locals():
                 db.close()
-
         if user:
-
             stored_password = user["password"]
-
             password_valid = False
-
             try:
                 password_valid = check_password_hash(
                     stored_password,
@@ -1512,25 +1266,17 @@ def login():
                 )
             except Exception:
                 password_valid = False
-
-            # Initial admin account from database
             if (
                 username == "admin"
                 and stored_password == "admin123"
                 and password == "admin123"
             ):
                 password_valid = True
-
             if password_valid:
-
-                # Convert initial plain password to hashed password
                 if stored_password == "admin123":
-
                     new_password = generate_password_hash(password)
-
                     db = get_db_connection()
                     cursor = db.cursor()
-
                     cursor.execute(
                         """
                         UPDATE users
@@ -1539,90 +1285,54 @@ def login():
                         """,
                         (new_password, user["id"])
                     )
-
                     db.commit()
-
                     cursor.close()
                     db.close()
-
                 session.clear()
                 session["user_id"] = user["id"]
                 session["username"] = user["username"]
                 session["role"] = user["role"]
-
                 if user["role"] == "admin":
                     return redirect(url_for("admin_dashboard"))
-
                 if user["role"] == "faculty":
                     return redirect(url_for("faculty_dashboard"))
-
                 if user["role"] == "student":
                     return redirect(url_for("student_dashboard"))
-
         flash("Invalid username or password.", "danger")
-
     return render_template("login.html")
-
-
-# ============================================================
-# LOGOUT
-# ============================================================
-
 @app.route("/logout")
 def logout():
     session.clear()
-
     return redirect(url_for("login"))
-
-# ============================================================
-# ADMIN MODULE
-# ============================================================
-
-# ============================================================
-# ADMIN DASHBOARD
-# ============================================================
-
 @app.route("/admin/dashboard")
 def admin_dashboard():
-
     if not admin_required():
         return redirect(url_for("login"))
-
     db = get_db_connection()
     cursor = db.cursor(dictionary=True)
-
     cursor.execute("SELECT COUNT(*) AS total FROM departments")
     departments_count = cursor.fetchone()["total"]
-
     cursor.execute("SELECT COUNT(*) AS total FROM classes")
     classes_count = cursor.fetchone()["total"]
-
     cursor.execute("SELECT COUNT(*) AS total FROM faculty")
     faculty_count = cursor.fetchone()["total"]
-
     cursor.execute("SELECT COUNT(*) AS total FROM students")
     students_count = cursor.fetchone()["total"]
-
     cursor.execute("SELECT COUNT(*) AS total FROM subjects")
     subjects_count = cursor.fetchone()["total"]
-
     cursor.execute("""
         SELECT visibility
         FROM result_settings
         WHERE id = 1
     """)
-
     setting = cursor.fetchone()
-
     result_visibility = (
         bool(setting["visibility"])
         if setting
         else False
     )
-
     cursor.close()
     db.close()
-
     return render_template(
         "admin/dashboard.html",
         departments_count=departments_count,
@@ -1632,39 +1342,24 @@ def admin_dashboard():
         subjects_count=subjects_count,
         result_visibility=result_visibility
     )
-
-
-# ============================================================
-# ADMIN PROFILE
-# ============================================================
-
 @app.route("/admin/profile", methods=["GET", "POST"])
 def admin_profile():
-
     if not admin_required():
         return redirect(url_for("login"))
-
     db = get_db_connection()
     cursor = db.cursor(dictionary=True)
-
     if request.method == "POST":
-
         username = request.form.get(
             "username",
             ""
         ).strip()
-
         if not username:
-
             flash(
                 "Username is required.",
                 "danger"
             )
-
         else:
-
             try:
-
                 cursor.execute("""
                     UPDATE users
                     SET username = %s
@@ -1673,25 +1368,18 @@ def admin_profile():
                     username,
                     session["user_id"]
                 ))
-
                 db.commit()
-
                 session["username"] = username
-
                 flash(
                     "Profile updated successfully.",
                     "success"
                 )
-
             except mysql.connector.Error:
-
                 db.rollback()
-
                 flash(
                     "Username already exists.",
                     "danger"
                 )
-
     cursor.execute("""
         SELECT id, username, role
         FROM users
@@ -1699,22 +1387,13 @@ def admin_profile():
     """, (
         session["user_id"],
     ))
-
     admin = cursor.fetchone()
-
     cursor.close()
     db.close()
-
     return render_template(
         "admin/profile.html",
         admin=admin
     )
-
-
-# ============================================================
-# DEPARTMENT MANAGEMENT
-# ============================================================
-
 @app.route("/admin/departments")
 def departments():
     if not admin_required():
@@ -1736,48 +1415,40 @@ def departments():
         return render_template("admin/departments.html", departments=rows)
     finally:
         cursor.close(); db.close()
-
-
 @app.route("/admin/departments/add", methods=["GET", "POST"])
 def add_department():
     if not admin_required():
         return redirect(url_for("login"))
     if request.method == "GET":
         return render_template("admin/department_form.html", department=None)
-
     department_name = request.form.get("department_name", "").strip()
     department_code = request.form.get("department_code", "").strip().upper()
     start_year = request.form.get("start_year", "").strip()
     hod_name = request.form.get("hod_name", "").strip()
-
     if not department_name or not department_code or not start_year or not hod_name:
         flash("Department/Course Name, Department Code, Start Year and HOD Name are required.", "danger")
         return render_template("admin/department_form.html", department={
             "department_name": department_name, "department_code": department_code,
             "start_year": start_year, "hod_name": hod_name
         })
-
     if not re.fullmatch(r"[A-Z0-9][A-Z0-9_-]{1,19}", department_code):
         flash("Department Code must be 2-20 characters using only letters, numbers, underscore or hyphen.", "danger")
         return render_template("admin/department_form.html", department={
             "department_name": department_name, "department_code": department_code,
             "start_year": start_year, "hod_name": hod_name
         })
-
     course_type = _infer_course_type(department_name)
     db = get_db_connection(); cursor = db.cursor()
     try:
         cursor.execute("SELECT id FROM departments WHERE UPPER(department_code)=UPPER(%s) LIMIT 1", (department_code,))
         if cursor.fetchone():
             raise ValueError("Department Code already exists. Please enter a unique code.")
-
         cursor.execute("INSERT INTO departments(department_name,department_code,hod_name) VALUES(%s,%s,%s)",
                        (department_name, department_code, hod_name))
         department_id = cursor.lastrowid
         start, end, academic_batch = save_department_batch(
             cursor, department_id, course_type, start_year
         )
-
         years = 2 if course_type == "PG" else 3
         for class_name in [f"{n}st Year" if n == 1 else f"{n}nd Year" if n == 2 else f"{n}rd Year" for n in range(1, years + 1)]:
             cursor.execute("INSERT INTO classes(department_id,class_name) VALUES(%s,%s)", (department_id, class_name))
@@ -1795,8 +1466,6 @@ def add_department():
         })
     finally:
         cursor.close(); db.close()
-
-
 @app.route("/admin/departments/edit/<int:department_id>", methods=["GET", "POST"])
 def edit_department(department_id):
     if not admin_required():
@@ -1818,7 +1487,6 @@ def edit_department(department_id):
         department["start_year"] = batch.get("start_year", "")
         department["end_year"] = batch.get("end_year", "")
         department["academic_batch"] = batch.get("course_duration", "")
-
         if request.method == "POST":
             name = request.form.get("department_name", "").strip()
             department_code = request.form.get("department_code", "").strip().upper()
@@ -1839,13 +1507,9 @@ def edit_department(department_id):
             start, end, academic_batch = save_department_batch(
                 cursor, department_id, course_type, start_year
             )
-
-            # Keep exactly the internally valid year classes for the inferred course duration.
             max_years = 2 if course_type == "PG" else 3
             cursor.execute("SELECT id,class_name FROM classes WHERE department_id=%s", (department_id,))
             existing = cursor.fetchall()
-            # Existing class records are preserved. New valid year classes are
-            # added when required; legacy extra classes are not deleted.
             existing_years = {_infer_year_from_class(r["class_name"]) for r in existing}
             for year_no in range(1, max_years + 1):
                 if year_no not in existing_years:
@@ -1855,7 +1519,6 @@ def edit_department(department_id):
             db.commit()
             flash("Department updated successfully.", "success")
             return redirect(url_for("departments"))
-
         return render_template("admin/department_form.html", department=department)
     except (mysql.connector.Error, ValueError) as e:
         db.rollback()
@@ -1870,11 +1533,6 @@ def edit_department(department_id):
         return render_template("admin/department_form.html", department=department)
     finally:
         cursor.close(); db.close()
-
-# ============================================================
-# DELETE DEPARTMENT
-# ============================================================
-
 @app.route("/admin/departments/delete/<int:department_id>", methods=["POST"])
 def delete_department(department_id):
     if not admin_required(): return redirect(url_for("login"))
@@ -1895,25 +1553,16 @@ def delete_department(department_id):
         db.rollback(); flash(f"Unable to delete department: {e}","danger")
     finally: cur.close(); db.close()
     return redirect(url_for("departments"))
-
-# ============================================================
-# CLASS VIEW
-# ============================================================
-
 @app.route("/admin/classes")
 def classes():
-
     if not admin_required():
         return redirect(url_for("login"))
-
     db = get_db_connection()
     cursor = db.cursor(dictionary=True)
-
     cursor.execute("SHOW COLUMNS FROM classes")
     class_columns = {str(row.get('Field', '')).lower() for row in cursor.fetchall()}
     faculty_select = 'f.faculty_name' if 'faculty_id' in class_columns else 'NULL AS faculty_name'
     faculty_join = 'LEFT JOIN faculty f ON c.faculty_id = f.id' if 'faculty_id' in class_columns else ''
-
     cursor.execute(f"""
         SELECT
             c.id,
@@ -1933,22 +1582,13 @@ def classes():
             d.department_name,
             c.id
     """)
-
     class_list = cursor.fetchall()
-
     cursor.close()
     db.close()
-
     return render_template(
         "admin/classes.html",
         classes=class_list
     )
-
-
-# ============================================================
-# FACULTY MANAGEMENT
-# ============================================================
-
 @app.route('/admin/faculty')
 def faculty():
     if not admin_required():
@@ -1956,8 +1596,6 @@ def faculty():
     db = get_db_connection()
     cur = db.cursor(dictionary=True)
     try:
-        # Keep existing faculty login usernames synchronized with their names.
-        # Example: "Dr. Suresh Kumar" -> username "drsureshkumar".
         cur.execute("SELECT f.user_id, f.faculty_name, u.username FROM faculty f INNER JOIN users u ON u.id=f.user_id WHERE u.role='faculty'")
         for account in cur.fetchall():
             desired = _faculty_username(account.get('faculty_name'))
@@ -1968,7 +1606,6 @@ def faculty():
             if not cur.fetchone():
                 cur.execute('UPDATE users SET username=%s WHERE id=%s', (desired, account['user_id']))
         db.commit()
-
         cur.execute('''SELECT f.id, f.faculty_name, f.email, f.phone, f.department_id,
                               d.department_name
                        FROM faculty f
@@ -1979,8 +1616,6 @@ def faculty():
     finally:
         cur.close()
         db.close()
-
-
 @app.route('/admin/faculty/view/<int:faculty_id>')
 def view_faculty(faculty_id):
     if not admin_required():
@@ -2002,22 +1637,15 @@ def view_faculty(faculty_id):
     finally:
         cur.close()
         db.close()
-
-
 def _faculty_departments(cur):
     cur.execute('SELECT id, department_name, department_code FROM departments ORDER BY department_name')
     return cur.fetchall()
-
-
 def _faculty_username(name):
     """Create a faculty username from the name without spaces or punctuation.
-
     Example: "Dr. Suresh Kumar" -> "drsureshkumar".
     The faculty DOB/password rule is unchanged.
     """
     return re.sub(r'[^a-z0-9]', '', str(name or '').strip().lower())
-
-
 def _dob_password(dob_value):
     """Return the faculty login password in DD/MM/YYYY format."""
     value = str(dob_value or '').strip()
@@ -2029,8 +1657,6 @@ def _dob_password(dob_value):
         except ValueError:
             continue
     return value
-
-
 def _dob_db_value(dob_value):
     """Normalize a faculty DOB to MySQL DATE format YYYY-MM-DD."""
     value = str(dob_value or '').strip()
@@ -2042,18 +1668,12 @@ def _dob_db_value(dob_value):
         except ValueError:
             continue
     return None
-
-
 def _normalize_excel_header(value):
     return re.sub(r'[^a-z0-9]+', '_', str(value or '').strip().lower()).strip('_')
-
-
 def _department_key(value):
     """Normalize department names for reliable bulk-upload matching."""
     words = re.findall(r'[a-z0-9]+', str(value or '').lower())
     return ' '.join(word[:-1] if len(word) > 3 and word.endswith('s') else word for word in words)
-
-
 def _faculty_excel_aliases():
     return {
         'faculty_name': {'faculty_name', 'name', 'faculty'},
@@ -2062,8 +1682,6 @@ def _faculty_excel_aliases():
         'department': {'department', 'department_name', 'course'},
         'dob': {'dob', 'date_of_birth', 'birth_date'},
     }
-
-
 def _read_faculty_excel(file_path):
     ext = os.path.splitext(file_path)[1].lower()
     records = []
@@ -2121,8 +1739,6 @@ def _read_faculty_excel(file_path):
     else:
         raise ValueError('Only .xlsx and .csv files are supported.')
     return records
-
-
 def _validate_faculty_bulk(conn, rows):
     cur = conn.cursor(dictionary=True)
     try:
@@ -2139,13 +1755,10 @@ def _validate_faculty_bulk(conn, rows):
         seen_emails, seen_phones, seen_usernames = set(), set(), set()
         out = []
         email_re = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
-
         for index, row in enumerate(rows, start=1):
             errors = []
-
             def clean(value):
                 return str(value or '').strip()
-
             name = clean(row.get('faculty_name'))
             email = clean(row.get('email'))
             phone = clean(row.get('phone'))
@@ -2153,7 +1766,6 @@ def _validate_faculty_bulk(conn, rows):
             dob_raw = clean(row.get('dob'))
             username = _faculty_username(name)
             password = _dob_password(dob_raw)
-
             if not name: errors.append('Faculty Name is required')
             if not email: errors.append('Email is required')
             elif not email_re.match(email): errors.append('Invalid email format')
@@ -2162,28 +1774,23 @@ def _validate_faculty_bulk(conn, rows):
             if not dept_value: errors.append('Department is required')
             if not dob_raw: errors.append('Date of Birth is required')
             elif not password: errors.append('Date of Birth must be in DD/MM/YYYY or YYYY-MM-DD format')
-
             dept = by_name.get(_department_key(dept_value)) or by_code.get(dept_value.lower())
             if dept_value and not dept:
                 errors.append(f'Department "{dept_value}" does not exist')
-
             email_key = email.lower()
             phone_key = phone
             username_key = username.lower()
-
             if username and username_key in db_usernames: errors.append('Faculty name/username already exists')
             if username and username_key in seen_usernames: errors.append('Duplicate faculty name/username in this file')
             if email and email_key in db_emails: errors.append('Email already exists')
             if email and email_key in seen_emails: errors.append('Duplicate email in this file')
             if phone and phone_key in db_phones: errors.append('Phone already exists')
             if phone and phone_key in seen_phones: errors.append('Duplicate phone in this file')
-
             valid = not errors
             if valid:
                 if email: seen_emails.add(email_key)
                 if phone: seen_phones.add(phone_key)
                 if username: seen_usernames.add(username_key)
-
             out.append({
                 'sno': index,
                 'row_no': row.get('_row_no', index + 1),
@@ -2203,14 +1810,10 @@ def _validate_faculty_bulk(conn, rows):
         return out
     finally:
         cur.close()
-
-
 def _bulk_upload_dir():
     path = os.path.join(tempfile.gettempdir(), 'e_progress_card_faculty_bulk')
     os.makedirs(path, exist_ok=True)
     return path
-
-
 @app.route('/admin/faculties/template')
 def download_faculty_template():
     if not admin_required(): return redirect(url_for('login'))
@@ -2224,18 +1827,14 @@ def download_faculty_template():
     for i, width in enumerate([24,30,16,24,16], start=1): ws.column_dimensions[chr(64+i)].width = width
     output = BytesIO(); wb.save(output); output.seek(0)
     return send_file(output, as_attachment=True, download_name='faculty_upload_template.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-
-
 @app.route('/admin/faculties/add', methods=['GET', 'POST'])
 def add_faculty():
     if not admin_required():
         return redirect(url_for('login'))
-
     conn = get_db_connection()
     cur = conn.cursor(dictionary=True)
     try:
         departments = _faculty_departments(cur)
-
         if request.method == 'POST':
             name = request.form.get('faculty_name', '').strip()
             email = request.form.get('email', '').strip()
@@ -2244,46 +1843,37 @@ def add_faculty():
             dob = request.form.get('dob', '').strip()
             username = _faculty_username(name)
             password = _dob_password(dob)
-
             if not all([name, email, phone, dept, dob]):
                 raise ValueError('Faculty Name, Email, Phone, Department and Date of Birth are required.')
             if not password:
                 raise ValueError('Enter a valid Date of Birth.')
-
             if not re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', email):
                 raise ValueError('Enter a valid email address.')
             if not phone.isdigit() or len(phone) != 10:
                 raise ValueError('Phone number must contain exactly 10 digits.')
-
             cur.execute('SELECT id FROM users WHERE LOWER(username)=LOWER(%s)', (username,))
             if cur.fetchone():
                 raise ValueError('A faculty with the same generated username already exists.')
-
             cur.execute('SELECT id FROM faculty WHERE LOWER(email)=LOWER(%s)', (email,))
             if cur.fetchone():
                 raise ValueError('Faculty email already exists.')
-
             cur.execute('SELECT id FROM faculty WHERE phone=%s', (phone,))
             if cur.fetchone():
                 raise ValueError('Faculty phone number already exists.')
-
             cur.execute('SELECT id FROM departments WHERE id=%s', (dept,))
             if not cur.fetchone():
                 raise ValueError('Selected department does not exist.')
-
             cur.execute(
                 "INSERT INTO users(username,password,role) VALUES(%s,%s,'faculty')",
                 (username, generate_password_hash(password))
             )
             uid = cur.lastrowid
-
             cur.execute(
                 "SELECT IS_NULLABLE FROM information_schema.COLUMNS "
                 "WHERE TABLE_SCHEMA=%s AND TABLE_NAME='faculty' AND COLUMN_NAME='class_id' LIMIT 1",
                 (config.DB_NAME,)
             )
             class_meta = cur.fetchone()
-
             if class_meta and str(class_meta.get('IS_NULLABLE', 'YES')).upper() == 'NO':
                 cur.execute('SELECT id FROM classes WHERE department_id=%s ORDER BY id LIMIT 1', (dept,))
                 legacy_class = cur.fetchone()
@@ -2307,23 +1897,17 @@ def add_faculty():
                         'VALUES(%s,%s,%s,%s,%s)',
                         (uid, name, email, phone, dept)
                     )
-
             fid = cur.lastrowid
-
-            # Keep DOB only for the faculty account password rule.
             cur.execute(
                 '''INSERT INTO ep_faculty_details(faculty_id,dob)
                    VALUES(%s,%s)
                    ON DUPLICATE KEY UPDATE dob=VALUES(dob)''',
                 (fid, _dob_db_value(dob))
             )
-
             conn.commit()
             flash('Faculty added successfully. Username is the faculty name and password is the DOB in DD/MM/YYYY format.', 'success')
             return redirect(url_for('faculty'))
-
         return render_template('admin/faculty_form.html', faculty=None, departments=departments, classes=[])
-
     except (ValueError, mysql.connector.Error) as e:
         conn.rollback()
         flash(f'Unable to add faculty: {e}', 'danger')
@@ -2331,8 +1915,6 @@ def add_faculty():
     finally:
         cur.close()
         conn.close()
-
-
 @app.route('/admin/faculties/bulk-upload', methods=['POST'])
 def faculty_bulk_upload():
     if not admin_required(): return redirect(url_for('login'))
@@ -2358,8 +1940,6 @@ def faculty_bulk_upload():
             if os.path.exists(path): os.remove(path)
         except OSError: pass
         flash(f'Unable to read faculty file: {e}','danger'); return redirect(url_for('add_faculty'))
-
-
 @app.route('/admin/faculties/bulk-confirm', methods=['POST'])
 def faculty_bulk_confirm():
     if not admin_required(): return redirect(url_for('login'))
@@ -2414,13 +1994,10 @@ def faculty_bulk_confirm():
     if failed: session['faculty_bulk_failures']=failed[:200]
     else: session.pop('faculty_bulk_failures',None)
     return redirect(url_for('faculty'))
-
-
 @app.route('/admin/faculty/edit/<int:faculty_id>', methods=['GET', 'POST'])
 def edit_faculty(faculty_id):
     if not admin_required():
         return redirect(url_for('login'))
-
     conn = get_db_connection()
     cur = conn.cursor(dictionary=True)
     try:
@@ -2434,13 +2011,10 @@ def edit_faculty(faculty_id):
             (faculty_id,)
         )
         faculty_data = cur.fetchone()
-
         if not faculty_data:
             flash('Faculty not found.', 'danger')
             return redirect(url_for('faculty'))
-
         departments = _faculty_departments(cur)
-
         if request.method == 'POST':
             name = request.form.get('faculty_name', '').strip()
             email = request.form.get('email', '').strip()
@@ -2449,42 +2023,35 @@ def edit_faculty(faculty_id):
             dob = request.form.get('dob', '').strip()
             username = _faculty_username(name)
             password = _dob_password(dob)
-
             if not all([name, email, phone, dept, dob]):
                 raise ValueError('Faculty Name, Email, Phone, Department and Date of Birth are required.')
             if not password:
                 raise ValueError('Enter a valid Date of Birth.')
-
             if not re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', email):
                 raise ValueError('Enter a valid email address.')
             if not phone.isdigit() or len(phone) != 10:
                 raise ValueError('Phone number must contain exactly 10 digits.')
-
             cur.execute(
                 'SELECT id FROM users WHERE LOWER(username)=LOWER(%s) AND id<>%s',
                 (username, faculty_data['user_id'])
             )
             if cur.fetchone():
                 raise ValueError('A faculty with the same generated username already exists.')
-
             cur.execute(
                 'SELECT id FROM faculty WHERE LOWER(email)=LOWER(%s) AND id<>%s',
                 (email, faculty_id)
             )
             if cur.fetchone():
                 raise ValueError('Faculty email already exists.')
-
             cur.execute(
                 'SELECT id FROM faculty WHERE phone=%s AND id<>%s',
                 (phone, faculty_id)
             )
             if cur.fetchone():
                 raise ValueError('Faculty phone number already exists.')
-
             cur.execute('SELECT id FROM departments WHERE id=%s', (dept,))
             if not cur.fetchone():
                 raise ValueError('Selected department does not exist.')
-
             cur.execute(
                 'UPDATE faculty SET faculty_name=%s,email=%s,phone=%s,department_id=%s WHERE id=%s',
                 (name, email, phone, dept, faculty_id)
@@ -2499,11 +2066,9 @@ def edit_faculty(faculty_id):
                    ON DUPLICATE KEY UPDATE dob=VALUES(dob)''',
                 (faculty_id, _dob_db_value(dob))
             )
-
             conn.commit()
             flash('Faculty updated successfully. Username is the faculty name and password is the DOB in DD/MM/YYYY format.', 'success')
             return redirect(url_for('faculty'))
-
         return render_template(
             'admin/faculty_form.html',
             faculty=faculty_data,
@@ -2522,18 +2087,13 @@ def edit_faculty(faculty_id):
     finally:
         cur.close()
         conn.close()
-
-
 @app.route('/admin/faculty/delete/<int:faculty_id>', methods=['POST'])
 def delete_faculty(faculty_id):
     if not admin_required():
         return redirect(url_for('login'))
-
     conn = get_db_connection()
     cur = conn.cursor(dictionary=True)
     try:
-        # The faculty table uses `id` as its primary key.  Do not assume that
-        # every older installation has the same columns in the related tables.
         cur.execute(
             'SELECT id, user_id, faculty_name FROM faculty WHERE id=%s LIMIT 1',
             (faculty_id,)
@@ -2542,24 +2102,15 @@ def delete_faculty(faculty_id):
         if not row:
             flash('Faculty not found.', 'danger')
             return redirect(url_for('faculty'))
-
         def table_has_column(table_name, column_name):
-            # SHOW COLUMNS reads the actual table definition, unlike relying on
-            # the CREATE TABLE statements in this application. This is important
-            # for databases created by older versions of the project.
             try:
                 cur.execute(f"SHOW COLUMNS FROM `{table_name}`")
                 columns = {str(r.get('Field', '')).lower() for r in cur.fetchall()}
                 return column_name.lower() in columns
             except mysql.connector.Error as table_error:
-                # A missing legacy table can safely be skipped.
                 if getattr(table_error, 'errno', None) == 1146:
                     return False
                 raise
-
-        # Delete only from tables that really contain faculty_id in the
-        # currently installed database. This prevents the 1054 error when an
-        # older/legacy table has a different column layout.
         for table_name in (
             'ep_question_papers',
             'ep_faculty_assignments',
@@ -2570,31 +2121,20 @@ def delete_faculty(faculty_id):
                     f'DELETE FROM `{table_name}` WHERE `faculty_id`=%s',
                     (faculty_id,)
                 )
-
-        # Legacy class assignment is optional in older databases.
         if table_has_column('classes', 'faculty_id'):
             cur.execute(
                 'UPDATE classes SET faculty_id=NULL WHERE faculty_id=%s',
                 (faculty_id,)
             )
-
-        # Remove the faculty record itself. IMPORTANT: the faculty table uses
-        # `id` as its primary key; older versions of this project incorrectly
-        # used `faculty_id` here, which causes MySQL error 1054.
         user_id = row.get('user_id')
         cur.execute('DELETE FROM `faculty` WHERE `id`=%s', (faculty_id,))
-
-        # Delete the linked login only after the faculty row succeeds.
-        # This is optional for older databases where users.id may differ.
         if user_id and table_has_column('users', 'id'):
             cur.execute('DELETE FROM `users` WHERE `id`=%s', (user_id,))
-
         conn.commit()
         flash(
             f"Faculty '{row.get('faculty_name') or faculty_id}' deleted successfully.",
             'success'
         )
-
     except (mysql.connector.Error, ValueError) as e:
         conn.rollback()
         flash(f'Unable to delete faculty: {e}', 'danger')
@@ -2602,8 +2142,6 @@ def delete_faculty(faculty_id):
         cur.close()
         conn.close()
     return redirect(url_for('faculty'))
-
-
 def _student_academic_rows(cur):
     """Return the department, class, and batch options used by student pages."""
     cur.execute("SELECT id, department_name, department_code FROM departments ORDER BY department_name")
@@ -2617,8 +2155,6 @@ def _student_academic_rows(cur):
     """)
     batches = cur.fetchall()
     return departments, classes, batches
-
-
 def _academic_context(batch, class_name=None, academic_start=None):
     """Build the display context for a department batch and academic year."""
     start_year = int(batch.get('start_year') or 0)
@@ -2644,8 +2180,6 @@ def _academic_context(batch, class_name=None, academic_start=None):
         'batch': f'{start_year}-{end_year}',
         'course_duration': duration,
     }
-
-
 @app.route('/admin/students')
 def students():
     if not admin_required(): return redirect(url_for('login'))
@@ -2673,8 +2207,6 @@ def students():
                         q+=' ORDER BY s.student_name ASC'; cur.execute(q,tuple(params)); students=cur.fetchall()
         return render_template('admin/students.html',students=students,departments=departments,classes=classes,batches=batches,selected_department=dept_id,selected_academic_year=academic_year,search=search,selected_context=selected_context)
     finally: cur.close(); db.close()
-
-
 def _student_login_password_from_dob(dob_value):
     """Return the student's login password in DD/MM/YYYY format."""
     if dob_value is None or str(dob_value).strip() == "":
@@ -2689,26 +2221,18 @@ def _student_login_password_from_dob(dob_value):
         except ValueError:
             continue
     raise ValueError("Invalid Date of Birth. Use DD/MM/YYYY format.")
-
-
 def _student_form_data(cur):
     return _student_academic_rows(cur)
-
-
 def _student_bulk_dir():
     path = os.path.join(tempfile.gettempdir(), 'e_progress_card_student_bulk')
     os.makedirs(path, exist_ok=True)
     return path
-
-
 def _student_excel_value(value):
     if value is None:
         return ''
     if hasattr(value, 'strftime'):
         return value.strftime('%Y-%m-%d')
     return str(value).strip()
-
-
 def _read_student_excel(path):
     aliases = {
         'register_number': {'register_number', 'register_no', 'register', 'roll_no', 'roll_number'},
@@ -2756,8 +2280,6 @@ def _read_student_excel(path):
     else:
         raise ValueError('Only .xlsx and .csv files are supported.')
     return records
-
-
 def _validate_student_bulk(conn, rows, department_id, class_id):
     cur = conn.cursor(dictionary=True)
     try:
@@ -2818,8 +2340,6 @@ def _validate_student_bulk(conn, rows, department_id, class_id):
         return output, department, selected_class, batch, context
     finally:
         cur.close()
-
-
 @app.route('/admin/students/add',methods=['GET','POST'])
 def add_student():
     if not admin_required(): return redirect(url_for('login'))
@@ -2852,8 +2372,6 @@ def add_student():
     except (ValueError,mysql.connector.Error) as e:
         db.rollback(); flash(f'Unable to add student: {e}','danger'); return render_template('admin/student_form.html',departments=departments,classes=classes,batches=batches,student=None)
     finally: cur.close(); db.close()
-
-
 @app.route('/admin/students/template')
 def download_student_template():
     if not admin_required(): return redirect(url_for('login'))
@@ -2866,8 +2384,6 @@ def download_student_template():
     for i,w in enumerate([22,28,32,16,16],1): ws.column_dimensions[chr(64+i)].width=w
     out=BytesIO(); wb.save(out); out.seek(0)
     return send_file(out,as_attachment=True,download_name='student_upload_template.xlsx',mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-
-
 @app.route('/admin/students/bulk-upload',methods=['POST'])
 def student_bulk_upload():
     if not admin_required(): return redirect(url_for('login'))
@@ -2891,8 +2407,6 @@ def student_bulk_upload():
         try: os.remove(path)
         except OSError: pass
         flash(f'Unable to read student file: {e}','danger'); return redirect(url_for('add_student'))
-
-
 @app.route('/admin/students/bulk-confirm',methods=['POST'])
 def student_bulk_confirm():
     if not admin_required(): return redirect(url_for('login'))
@@ -2908,7 +2422,6 @@ def student_bulk_confirm():
     try:
         cur=conn.cursor(dictionary=True)
         rows=data['rows']; dept=int(data['department_id']); cls=int(data['class_id'])
-        # Revalidate against the live DB so changes made after preview cannot corrupt data.
         fresh,_,_,_,_= _validate_student_bulk(conn,[{'register_number':r.get('register_number'),'student_name':r.get('student_name'),'email':r.get('email'),'phone':r.get('phone'),'dob':r.get('dob'),'_row_no':r.get('row_no')} for r in rows],dept,cls)
         for row in fresh:
             if not row['valid']:
@@ -2919,7 +2432,6 @@ def student_bulk_confirm():
                 cur.execute("INSERT INTO users(username,password,role) VALUES(%s,%s,'student')",(username,generate_password_hash(login_password))); uid=cur.lastrowid
                 cur.execute('INSERT INTO students(user_id,register_number,student_name,email,phone,department_id,class_id) VALUES(%s,%s,%s,%s,%s,%s,%s)',(uid,row['register_number'],row['student_name'],row['email'],row['phone'],dept,cls)); sid=cur.lastrowid
                 cur.execute('INSERT INTO ep_student_details(student_id,gender,dob,address) VALUES(%s,NULL,%s,NULL)',(sid,row['dob']))
-                # Keep the selected class as the current class. Semester rows are synced by the existing academic layer.
                 conn.commit(); success+=1
             except (ValueError,mysql.connector.Error) as e:
                 conn.rollback(); failed.append({'name':row['student_name'] or f"Row {row['row_no']}",'errors':[str(e)]})
@@ -2936,8 +2448,6 @@ def student_bulk_confirm():
     if failed: session['student_bulk_failures']=failed[:200]
     else: session.pop('student_bulk_failures',None)
     return redirect(url_for('students'))
-
-
 @app.route('/admin/students/view/<int:student_id>')
 def view_student(student_id):
     if not admin_required(): return redirect(url_for('login'))
@@ -2948,8 +2458,6 @@ def view_student(student_id):
         if not student: flash('Student not found.','danger'); return redirect(url_for('students'))
         return render_template('admin/student_view.html',student=student)
     finally: cur.close(); db.close()
-
-
 @app.route('/admin/students/edit/<int:student_id>',methods=['GET','POST'])
 def edit_student(student_id):
     if not admin_required(): return redirect(url_for('login'))
@@ -2973,8 +2481,6 @@ def edit_student(student_id):
     except (ValueError,mysql.connector.Error) as e:
         db.rollback(); flash(f'Unable to update student: {e}','danger'); return redirect(url_for('edit_student',student_id=student_id))
     finally: cur.close(); db.close()
-
-
 @app.route('/admin/students/delete/<int:student_id>',methods=['POST'])
 def delete_student(student_id):
     if not admin_required(): return redirect(url_for('login'))
@@ -2988,20 +2494,11 @@ def delete_student(student_id):
     except mysql.connector.Error as e: db.rollback(); flash(f'Unable to delete student: {e}','danger')
     finally: cur.close(); db.close()
     return redirect(url_for('students'))
-
-
-# ============================================================
-# SUBJECT MANAGEMENT
-# ============================================================
-
 @app.route("/admin/subjects")
 def subjects():
     if not admin_required(): return redirect(url_for("login"))
     db=get_db_connection(); cur=db.cursor(dictionary=True)
     try:
-        # Subject Master intentionally contains only code + name.  Class,
-        # department, academic year and semester are attached later by the
-        # Faculty Subject / Assignment Process.
         cur.execute("""
             SELECT s.id,s.subject_code,s.subject_name,
                    COUNT(DISTINCT a.id) AS assignment_count
@@ -3013,7 +2510,6 @@ def subjects():
         rows=cur.fetchall()
         return render_template('admin/subjects.html',subjects=rows)
     finally: cur.close(); db.close()
-
 @app.route('/admin/subjects/add', methods=['GET','POST'])
 def add_subject():
     if not admin_required(): return redirect(url_for('login'))
@@ -3032,7 +2528,6 @@ def add_subject():
     except (ValueError,mysql.connector.Error) as e:
         db.rollback(); flash(f'Unable to add subject: {e}','danger'); return render_template('admin/subject_form.html',subject=None,edit_mode=False)
     finally: cur.close(); db.close()
-
 @app.route('/admin/subjects/edit/<int:subject_id>', methods=['GET','POST'])
 def edit_subject(subject_id):
     if not admin_required(): return redirect(url_for('login'))
@@ -3046,26 +2541,16 @@ def edit_subject(subject_id):
             if not code or not name: raise ValueError('Subject code and subject name are required.')
             cur.execute('SELECT id FROM subjects WHERE subject_code=%s AND id<>%s',(code,subject_id))
             if cur.fetchone(): raise ValueError('Subject code already exists.')
-            # Editing a subject must never change its assignment. Only the
-            # master code and name are editable here.
             cur.execute('UPDATE subjects SET subject_code=%s,subject_name=%s WHERE id=%s',(code,name,subject_id))
             db.commit(); flash('Subject updated successfully. Assignments were kept unchanged.','success'); return redirect(url_for('subjects'))
         return render_template('admin/subject_form.html',subject=subject,edit_mode=True)
     except (ValueError,mysql.connector.Error) as e:
         db.rollback(); flash(f'Unable to update subject: {e}','danger'); return render_template('admin/subject_form.html',subject=subject,edit_mode=True)
     finally: cur.close(); db.close()
-
-
-# ============================================================
-# SUBJECT BULK UPLOAD - SUBJECT MASTER ONLY
-# ============================================================
-
 def _subject_bulk_dir():
     path=os.path.join(tempfile.gettempdir(),'e_progress_card_subject_bulk')
     os.makedirs(path,exist_ok=True)
     return path
-
-
 def _read_subject_excel(path):
     """Read a subject master file containing only Subject Code and Subject Name."""
     ext=os.path.splitext(path)[1].lower()
@@ -3104,8 +2589,6 @@ def _read_subject_excel(path):
     else:
         raise ValueError('Only .xlsx and .csv files are supported.')
     return records
-
-
 def _validate_subject_bulk(conn,rows):
     """Validate subject master rows; assignment details are deliberately excluded."""
     cur=conn.cursor(dictionary=True)
@@ -3132,8 +2615,6 @@ def _validate_subject_bulk(conn,rows):
         return out
     finally:
         cur.close()
-
-
 @app.route('/admin/subjects/template')
 def download_subject_template():
     if not admin_required(): return redirect(url_for('login'))
@@ -3148,8 +2629,6 @@ def download_subject_template():
     ws.column_dimensions['A'].width=22; ws.column_dimensions['B'].width=42
     out=BytesIO(); wb.save(out); out.seek(0)
     return send_file(out,as_attachment=True,download_name='subject_master_upload_template.xlsx',mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-
-
 @app.route('/admin/subjects/bulk-upload',methods=['POST'])
 def subject_bulk_upload():
     if not admin_required(): return redirect(url_for('login'))
@@ -3176,8 +2655,6 @@ def subject_bulk_upload():
         try: os.remove(os.path.join(_subject_bulk_dir(),token+'.json'))
         except OSError: pass
         flash(f'Unable to read subject file: {e}','danger'); return redirect(url_for('subjects'))
-
-
 @app.route('/admin/subjects/bulk-confirm',methods=['POST'])
 def subject_bulk_confirm():
     if not admin_required(): return redirect(url_for('login'))
@@ -3201,7 +2678,6 @@ def subject_bulk_confirm():
                 cur.execute('SELECT id FROM subjects WHERE subject_code=%s LIMIT 1',(row['subject_code'],))
                 if cur.fetchone():
                     failed.append({'name':row['subject_name'],'errors':['Subject Code already exists']}); continue
-                # Subject master: no department, class, year, semester or faculty.
                 cur.execute('INSERT INTO subjects(subject_code,subject_name,department_id,class_id) VALUES(%s,%s,NULL,NULL)',(row['subject_code'],row['subject_name']))
                 conn.commit(); success+=1
             except mysql.connector.Error as e:
@@ -3219,8 +2695,6 @@ def subject_bulk_confirm():
     if failed: session['subject_bulk_failures']=failed[:200]
     else: session.pop('subject_bulk_failures',None)
     return redirect(url_for('subjects'))
-
-
 @app.route('/admin/subjects/delete/<int:subject_id>', methods=['POST'])
 def delete_subject(subject_id):
     if not admin_required(): return redirect(url_for('login'))
@@ -3230,50 +2704,32 @@ def delete_subject(subject_id):
     except mysql.connector.Error as e: db.rollback(); flash(f'Unable to delete subject: {e}','danger')
     finally: cur.close(); db.close()
     return redirect(url_for('subjects'))
-
-# ============================================================
-# AUTOMATIC FACULTY → CLASS → SUBJECT ASSIGNMENTS
-# ============================================================
-
 @app.route("/admin/assignments")
 def assignments():
     """Compatibility route for the Admin Assignments menu.
-
     The Admin UI now uses explicit Faculty + Class + Subject +
     Academic Year + Semester assignments.  Keep this original endpoint
     so existing links do not break.
     """
     return redirect(url_for("admin_faculty_assignments"))
-
-
-# ============================================================
-# RESULT VISIBILITY
-# ============================================================
-
 @app.route(
     "/admin/results",
     methods=["GET", "POST"]
 )
 def results():
-
     if not admin_required():
         return redirect(url_for("login"))
-
     db = get_db_connection()
     cursor = db.cursor(dictionary=True)
-
     if request.method == "POST":
-
         visibility = request.form.get(
             "visibility"
         )
-
         value = (
             True
             if visibility == "on"
             else False
         )
-
         cursor.execute("""
             UPDATE result_settings
             SET visibility = %s
@@ -3281,70 +2737,41 @@ def results():
         """, (
             value,
         ))
-
         db.commit()
-
         flash(
             "Result visibility updated successfully.",
             "success"
         )
-
     cursor.execute("""
         SELECT visibility
         FROM result_settings
         WHERE id = 1
     """)
-
     setting = cursor.fetchone()
-
     visibility = (
         bool(setting["visibility"])
         if setting
         else False
     )
-
     cursor.close()
     db.close()
-
     return render_template(
         "admin/results.html",
         visibility=visibility
     )
-
-
-# =========================================================
-# FACULTY MODULE
-# Uses the existing database/schema and existing Admin-style UI.
-# =========================================================
-
 from functools import wraps
 from flask import jsonify
-
-
-# =========================================================
-# FACULTY AUTHORIZATION
-# =========================================================
-
 def faculty_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if "user_id" not in session:
             flash("Please login first.", "warning")
             return redirect(url_for("login"))
-
         if session.get("role") != "faculty":
             flash("You are not authorized to access this page.", "danger")
             return redirect(url_for("login"))
-
         return f(*args, **kwargs)
-
     return decorated_function
-
-
-# =========================================================
-# LOGGED-IN FACULTY
-# =========================================================
-
 def get_faculty():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
@@ -3366,7 +2793,7 @@ def get_faculty():
                 u.role
             FROM faculty f
             JOIN users u ON f.user_id = u.id
-            JOIN departments d ON f.department_id = d.id
+            LEFT JOIN departments d ON f.department_id = d.id
             LEFT JOIN classes c ON f.class_id = c.id
             WHERE f.user_id = %s
             LIMIT 1
@@ -3377,12 +2804,8 @@ def get_faculty():
     finally:
         cursor.close()
         conn.close()
-
-
-
 def ensure_assignment_marks_schema(cur):
     """Create the assignment marks table on-demand for old databases.
-
     Some installations skipped the startup migration, so Assignment Mark Entry
     must never depend on ep_assignment_marks already existing.
     """
@@ -3399,10 +2822,6 @@ def ensure_assignment_marks_schema(cur):
                 (student_id,subject_id,academic_year_id,semester_no)
         )
     """)
-
-    # Partial assessment entry is supported. Legacy marks schemas often made
-    # calculated columns NOT NULL, which causes errors while only Assignment
-    # (or CIA1/CIA2) has been entered. Convert only existing NOT NULL columns.
     try:
         for col in ("ca1", "ca2", "assignment", "external", "internal",
                     "total", "grade", "result", "appreciation"):
@@ -3422,22 +2841,13 @@ def ensure_assignment_marks_schema(cur):
                 if str(nullable).upper()=="NO" and col_type:
                     cur.execute(f"ALTER TABLE marks MODIFY `{col}` {col_type} NULL")
     except mysql.connector.Error:
-        # A very old database may not have the legacy marks table yet.
         pass
-
-
 def faculty_page_data():
     faculty = get_faculty()
     if not faculty:
         return None, None
     letter = (faculty.get("faculty_name") or "F").strip()[:1].upper()
     return faculty, letter
-
-
-# =========================================================
-# SHARED FACULTY QUERIES
-# =========================================================
-
 def get_assigned_subjects(cursor, class_id):
     cursor.execute(
         """
@@ -3453,11 +2863,8 @@ def get_assigned_subjects(cursor, class_id):
         (class_id,)
     )
     return cursor.fetchall()
-
-
 def verify_student_access(cursor, faculty, student_id):
     """Authorize a student through the active faculty assignment.
-
     ep_student_semesters is preferred, with a safe legacy-class fallback for
     older rows that have not yet been migrated.
     """
@@ -3484,7 +2891,6 @@ def verify_student_access(cursor, faculty, student_id):
         cursor.execute("SELECT id FROM students WHERE id=%s AND class_id=%s LIMIT 1", (student_id, faculty.get("class_id")))
         return bool(cursor.fetchone())
     return False
-
 def verify_subject_access(cursor, faculty, subject_id):
     ay, sem, _ = get_selected_faculty_semester(cursor, faculty["faculty_id"])
     if ay and sem is not None:
@@ -3492,8 +2898,6 @@ def verify_subject_access(cursor, faculty, subject_id):
         return bool(cursor.fetchone())
     cursor.execute("SELECT s.id FROM subjects s INNER JOIN class_subjects cs ON cs.subject_id=s.id WHERE s.id=%s AND cs.class_id=%s LIMIT 1", (subject_id, faculty.get("class_id")))
     return bool(cursor.fetchone())
-
-
 def verify_mark_access(cursor, faculty, student_id, subject_id):
     """Authorize exact faculty/student/subject using active-year assignment data."""
     if not faculty:
@@ -3519,11 +2923,6 @@ def verify_mark_access(cursor, faculty, student_id, subject_id):
         """, (faculty["faculty_id"], subject_id, ay["id"], sem, student_id))
         return bool(cursor.fetchone())
     return bool(verify_student_access(cursor, faculty, student_id) and verify_subject_access(cursor, faculty, subject_id))
-
-
-# ============================================================
-# REGISTER NUMBER - EXACT SAME PREFIX/SEQUENCE IDEA AS ADMIN
-# ============================================================
 def get_year_code(class_name):
     text = (class_name or "").strip().lower()
     if "1st" in text or "first" in text:
@@ -3533,17 +2932,12 @@ def get_year_code(class_name):
     if "3rd" in text or "third" in text:
         return "III"
     return None
-
-
 def generate_faculty_register_number(cursor, faculty):
     department_code = (faculty.get("department_code") or "").strip().upper()
     year_code = get_year_code(faculty.get("class_name"))
-
     if not department_code or not year_code:
         raise ValueError("Unable to generate Register Number for the assigned class.")
-
     register_prefix = f"{department_code}{year_code}"
-
     cursor.execute(
         """
         SELECT register_number
@@ -3552,21 +2946,13 @@ def generate_faculty_register_number(cursor, faculty):
         """,
         (f"{register_prefix}%",)
     )
-
     highest_number = 0
     for row in cursor.fetchall():
         value = (row.get("register_number") or "").strip().upper()
         match = re.fullmatch(rf"{re.escape(register_prefix)}(\d+)", value)
         if match:
             highest_number = max(highest_number, int(match.group(1)))
-
     return f"{register_prefix}{highest_number + 1:02d}"
-
-
-# =========================================================
-# MARK CALCULATION
-# =========================================================
-
 def calculate_internal(ca1, ca2, assignment):
     if not 0 <= ca1 <= 75:
         raise ValueError("CIA 1 must be between 0 and 75.")
@@ -3574,20 +2960,14 @@ def calculate_internal(ca1, ca2, assignment):
         raise ValueError("CIA 2 must be between 0 and 75.")
     if not 0 <= assignment <= 5:
         raise ValueError("Assignment must be between 0 and 5.")
-
     ca1_converted = (ca1 / 75) * 10
     ca2_converted = (ca2 / 75) * 10
     return round(ca1_converted + ca2_converted + assignment, 2)
-
-
 def calculate_marks(ca1, ca2, assignment, external):
     internal = calculate_internal(ca1, ca2, assignment)
-
     if not 0 <= external <= 75:
         raise ValueError("External must be between 0 and 75.")
-
     total = round(internal + external, 2)
-
     if total >= 90:
         grade, appreciation = "A+", "Excellent"
     elif total >= 80:
@@ -3600,15 +2980,8 @@ def calculate_marks(ca1, ca2, assignment, external):
         grade, appreciation = "C", "Needs Improvement"
     else:
         grade, appreciation = "F", "Fail"
-
     result = "PASS" if total >= 30 else "FAIL"
     return internal, total, grade, result, appreciation
-
-
-# =========================================================
-# FACULTY DASHBOARD - EXACTLY SIX MAIN CARDS
-# =========================================================
-
 @app.route("/faculty/dashboard")
 @faculty_required
 def faculty_dashboard():
@@ -3619,7 +2992,6 @@ def faculty_dashboard():
     if not faculty:
         flash("Faculty profile not found.", "danger")
         return redirect(url_for("logout"))
-
     conn = get_db_connection()
     cur = conn.cursor(dictionary=True)
     try:
@@ -3631,10 +3003,12 @@ def faculty_dashboard():
             "assignment_completed": 0, "assignment_pending": 0,
             "total_entries": 0
         }
-
         if ay:
-            _ensure_faculty_student_semester_mappings(cur, faculty["faculty_id"], ay["id"])
-            conn.commit()
+            try:
+                _ensure_faculty_student_semester_mappings(cur, faculty["faculty_id"], ay["id"])
+                conn.commit()
+            except mysql.connector.Error:
+                conn.rollback()
             cur.execute("""
                 SELECT DISTINCT
                        a.class_id,
@@ -3648,10 +3022,6 @@ def faculty_dashboard():
                 ORDER BY d.department_name, c.class_name
             """, (faculty["faculty_id"], ay["id"]))
             classes = cur.fetchall()
-
-            # Count student-subject entries only for the faculty's active-year
-            # assignments. Internal = CIA1 + CIA2, Assignment = /5,
-            # External = /75. A missing component is pending.
             cur.execute("""
                 SELECT
                     COUNT(*) AS total_entries,
@@ -3698,7 +3068,6 @@ def faculty_dashboard():
                 "assignment_completed": ac,
                 "assignment_pending": max(total-ac, 0),
             })
-
         total_students = 0
         if ay:
             cur.execute("""
@@ -3711,14 +3080,12 @@ def faculty_dashboard():
                 WHERE a.faculty_id=%s AND a.academic_year_id=%s
             """, (faculty["faculty_id"], ay["id"]))
             total_students = int((cur.fetchone() or {}).get("cnt") or 0)
-
         cur.execute("""
             SELECT COUNT(DISTINCT CONCAT(a.subject_id,'-',a.semester_no)) AS cnt
             FROM ep_faculty_assignments a
             WHERE a.faculty_id=%s AND a.academic_year_id=%s
         """, (faculty["faculty_id"], ay["id"] if ay else 0))
         total_subjects = int((cur.fetchone() or {}).get("cnt") or 0)
-
         return render_template(
             "faculty/dashboard.html",
             faculty=faculty,
@@ -3733,12 +3100,6 @@ def faculty_dashboard():
     finally:
         cur.close()
         conn.close()
-
-
-# =========================================================
-# FACULTY CLASS-WISE WORKSPACE
-
-# =========================================================
 @app.route("/faculty/classes")
 @faculty_required
 def faculty_classes():
@@ -3746,7 +3107,6 @@ def faculty_classes():
     faculty, profile_letter = faculty_page_data()
     if not faculty:
         return redirect(url_for("faculty_dashboard"))
-
     conn = get_db_connection()
     cur = conn.cursor(dictionary=True)
     try:
@@ -3774,7 +3134,6 @@ def faculty_classes():
                 ORDER BY d.department_name,c.class_name
             """, (faculty["faculty_id"], ay["id"]))
             rows = cur.fetchall()
-
         return render_template(
             "faculty/my_classes.html",
             faculty=faculty,
@@ -3785,8 +3144,6 @@ def faculty_classes():
     finally:
         cur.close()
         conn.close()
-
-
 @app.route("/faculty/classes/<int:class_id>")
 @faculty_required
 def faculty_class_subjects(class_id):
@@ -3794,14 +3151,12 @@ def faculty_class_subjects(class_id):
     faculty, profile_letter = faculty_page_data()
     if not faculty:
         return redirect(url_for("faculty_dashboard"))
-
     conn = get_db_connection()
     cur = conn.cursor(dictionary=True)
     try:
         ay = get_active_academic_year(cur)
         cls = None
         subjects = []
-
         if ay:
             cur.execute("""
                 SELECT c.id,c.class_name,d.department_name,d.department_code
@@ -3815,7 +3170,6 @@ def faculty_class_subjects(class_id):
                   )
             """, (class_id, faculty["faculty_id"], ay["id"]))
             cls = cur.fetchone()
-
             if cls:
                 cur.execute("""
                     SELECT DISTINCT
@@ -3840,7 +3194,6 @@ def faculty_class_subjects(class_id):
             else:
                 flash("This class is not assigned to you for the active academic year.", "danger")
                 return redirect(url_for("faculty_classes"))
-
         return render_template(
             "faculty/class_subjects.html",
             faculty=faculty,
@@ -3852,11 +3205,6 @@ def faculty_class_subjects(class_id):
     finally:
         cur.close()
         conn.close()
-
-
-# =========================================================
-# MY SUBJECTS
-# =========================================================
 @app.route("/faculty/subjects")
 @faculty_required
 def faculty_subjects():
@@ -3864,7 +3212,6 @@ def faculty_subjects():
     faculty, profile_letter = faculty_page_data()
     if not faculty:
         return redirect(url_for("faculty_dashboard"))
-
     conn = get_db_connection()
     cur = conn.cursor(dictionary=True)
     try:
@@ -3898,7 +3245,6 @@ def faculty_subjects():
                 ORDER BY s.subject_name,c.class_name,a.semester_no
             """, (faculty["faculty_id"], ay["id"]))
             subjects = cur.fetchall()
-
         return render_template(
             "faculty/my_subjects.html",
             faculty=faculty,
@@ -3909,14 +3255,8 @@ def faculty_subjects():
     finally:
         cur.close()
         conn.close()
-
-
-# =========================================================
-# MARK ENTRY HUB
-# =========================================================
 def _assessment_completion_status(cur, faculty, row, academic_year_id):
     """Return student-wise completion status for each assessment button.
-
     An assessment is marked complete only when every student mapped to the
     assigned class/semester has a complete set of marks for that assessment.
     Zero is a valid entered mark; missing/null values are treated as pending.
@@ -3924,7 +3264,6 @@ def _assessment_completion_status(cur, faculty, row, academic_year_id):
     class_id = row["class_id"]
     subject_id = row["subject_id"]
     semester_no = row["semester_no"]
-
     cur.execute("""
         SELECT DISTINCT s.id AS student_id
         FROM ep_student_semesters es
@@ -3945,7 +3284,6 @@ def _assessment_completion_status(cur, faculty, row, academic_year_id):
             "complete": False, "entered": 0, "total": 0,
             "label": "No students", "icon": "bi-dash-circle", "state": "empty"
         }
-
     def result(entered):
         complete = entered == total_students
         return {
@@ -3954,10 +3292,6 @@ def _assessment_completion_status(cur, faculty, row, academic_year_id):
             "icon": "bi-check-circle-fill" if complete else "bi-hourglass-split",
             "state": "complete" if complete else "pending"
         }
-
-    # Assignment marks are keyed per student/class/subject/semester in the
-    # dedicated assignment table. Presence of a row means even a zero mark
-    # has intentionally been entered.
     cur.execute("""
         SELECT COUNT(DISTINCT student_id) AS entered
         FROM ep_assignment_marks
@@ -3966,9 +3300,6 @@ def _assessment_completion_status(cur, faculty, row, academic_year_id):
     """ % ("%s", "%s", "%s", ",".join(["%s"] * total_students)),
         (subject_id, academic_year_id, semester_no, *student_ids))
     assignment_entered = int(cur.fetchone()["entered"] or 0)
-
-    # CIA question-wise marks are stored in the faculty/subject/semester JSON
-    # file. Use the same completeness rules as the save endpoint.
     statuses = {}
     for cia in ("cia1", "cia2"):
         details = _load_cia_detail_marks(
@@ -3994,9 +3325,6 @@ def _assessment_completion_status(cur, faculty, row, academic_year_id):
             except (TypeError, ValueError):
                 pass
         statuses[cia] = result(entered)
-
-    # External question-wise marks are stored in ep_question_marks. Each
-    # student must have all 10 A + 5 B rows and exactly 3 obtained C marks.
     cur.execute("""
         SELECT student_id, question_no, obtained_marks, choice
         FROM ep_question_marks
@@ -4022,8 +3350,6 @@ def _assessment_completion_status(cur, faculty, row, academic_year_id):
     statuses["assignment"] = result(assignment_entered)
     statuses["external"] = result(external_entered)
     return statuses
-
-
 @app.route("/faculty/marks-entry")
 @faculty_required
 def faculty_marks_entry():
@@ -4031,7 +3357,6 @@ def faculty_marks_entry():
     faculty, profile_letter = faculty_page_data()
     if not faculty:
         return redirect(url_for("faculty_dashboard"))
-
     conn = get_db_connection()
     cur = conn.cursor(dictionary=True)
     try:
@@ -4062,7 +3387,6 @@ def faculty_marks_entry():
             assignments = cur.fetchall()
             for row in assignments:
                 row["assessment_status"] = _assessment_completion_status(cur, faculty, row, ay["id"])
-
         return render_template(
             "faculty/marks_entry.html",
             faculty=faculty,
@@ -4073,34 +3397,25 @@ def faculty_marks_entry():
     finally:
         cur.close()
         conn.close()
-
-
 @app.route("/faculty/assignment", methods=["GET","POST"])
 @faculty_required
 def faculty_assignment():
     faculty, profile_letter=faculty_page_data()
     if not faculty:
         return redirect(url_for("faculty_dashboard"))
-
     subject_id=request.values.get("subject_id",type=int)
     class_id=request.values.get("class_id",type=int)
-
     conn=get_db_connection()
     cur=conn.cursor(dictionary=True)
     try:
-        # Assignment entry must work even when the application startup migration
-        # did not run (common with existing XAMPP databases).
         ensure_assignment_marks_schema(cur)
         conn.commit()
-
         ay, sem, semester_options=get_selected_faculty_semester(cur,faculty["faculty_id"])
         if not (ay and sem is not None and subject_id and class_id):
             flash("Select a class and subject from My Classes.","warning")
             return redirect(url_for("faculty_classes"))
-
         _ensure_faculty_student_semester_mappings(cur, faculty["faculty_id"], ay["id"])
         conn.commit()
-
         cur.execute("""
             SELECT 1 FROM ep_faculty_assignments
             WHERE faculty_id=%s AND class_id=%s AND subject_id=%s
@@ -4109,7 +3424,6 @@ def faculty_assignment():
         if not cur.fetchone():
             flash("You cannot access this assignment.","danger")
             return redirect(url_for("faculty_classes"))
-
         if request.method=="POST":
             form_errors = []
             for key,val in request.form.items():
@@ -4125,7 +3439,6 @@ def faculty_assignment():
                 if mark is not None and (mark < 0 or mark > 5):
                     form_errors.append("Assignment marks must be between 0 and 5.")
                     continue
-
                 if mark is None:
                     cur.execute("""
                         DELETE FROM ep_assignment_marks
@@ -4139,8 +3452,6 @@ def faculty_assignment():
                         VALUES(%s,%s,%s,%s,%s)
                         ON DUPLICATE KEY UPDATE marks=VALUES(marks)
                     """, (sid,subject_id,ay["id"],sem,mark))
-
-                # Keep the legacy marks/result layer synchronized.
                 cur.execute("""
                     SELECT id,ca1,ca2,external
                     FROM marks
@@ -4152,12 +3463,10 @@ def faculty_assignment():
                 ca2=m["ca2"] if m else None
                 external=m["external"] if m else None
                 internal=total=grade=result=appreciation=None
-
                 if mark is not None and all(v is not None for v in (ca1,ca2,external)):
                     internal,total,grade,result,appreciation=calculate_marks(
                         float(ca1),float(ca2),float(mark),float(external)
                     )
-
                 if m:
                     cur.execute("""
                         UPDATE marks
@@ -4172,11 +3481,9 @@ def faculty_assignment():
                          external,total,grade,result,appreciation)
                         VALUES(%s,%s,NULL,NULL,%s,%s,NULL,%s,%s,%s,%s)
                     """, (sid,subject_id,mark,internal,total,grade,result,appreciation))
-
             conn.commit()
             flash("Assignment marks saved successfully.","success")
             return redirect(url_for("faculty_assignment", subject_id=subject_id, class_id=class_id))
-
         cur.execute("""
             SELECT s.id,s.register_number,s.student_name,
                    am.marks AS marks
@@ -4195,12 +3502,10 @@ def faculty_assignment():
             ORDER BY s.student_name
         """, (ay["id"],sem,class_id,subject_id,ay["id"],sem,class_id))
         students=cur.fetchall()
-
         cur.execute("SELECT subject_code,subject_name FROM subjects WHERE id=%s",(subject_id,))
         subject=cur.fetchone()
         cur.execute("SELECT class_name FROM classes WHERE id=%s",(class_id,))
         cls=cur.fetchone()
-
         return render_template(
             "faculty/assignment_marks.html",
             faculty=faculty,profile_letter=profile_letter,
@@ -4211,13 +3516,6 @@ def faculty_assignment():
     finally:
         cur.close()
         conn.close()
-
-
-# =========================================================
-# FACULTY PROFILE
-
-# =========================================================
-
 @app.route("/faculty/profile")
 @faculty_required
 def faculty_profile():
@@ -4225,7 +3523,6 @@ def faculty_profile():
     if not faculty:
         flash("Faculty profile not found.", "danger")
         return redirect(url_for("faculty_dashboard"))
-
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     try:
@@ -4243,7 +3540,6 @@ def faculty_profile():
                 ORDER BY c.class_name,a.semester_no,s.subject_name
             """, (faculty["faculty_id"], ay["id"]))
             subjects = cursor.fetchall()
-
         cursor.execute("""
             SELECT gender,dob,address
             FROM ep_faculty_details
@@ -4251,7 +3547,6 @@ def faculty_profile():
             LIMIT 1
         """, (faculty["faculty_id"],))
         details = cursor.fetchone() or {}
-
         cursor.execute("""
             SELECT DISTINCT c.class_name
             FROM ep_faculty_assignments a
@@ -4260,7 +3555,6 @@ def faculty_profile():
             ORDER BY c.class_name
         """, (faculty["faculty_id"], ay["id"] if ay else 0))
         assigned_classes = cursor.fetchall()
-
         return render_template(
             "faculty/profile.html",
             faculty=faculty,
@@ -4273,13 +3567,6 @@ def faculty_profile():
     finally:
         cursor.close()
         conn.close()
-
-
-# =========================================================
-# MY STUDENTS
-
-# =========================================================
-
 @app.route("/faculty/students")
 @faculty_required
 def faculty_students():
@@ -4288,7 +3575,6 @@ def faculty_students():
     if not faculty:
         flash("Faculty profile not found.", "danger")
         return redirect(url_for("faculty_dashboard"))
-
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     try:
@@ -4316,7 +3602,6 @@ def faculty_students():
                 ORDER BY c.class_name,s.student_name
             """, (faculty["faculty_id"],ay["id"]))
             students = cursor.fetchall()
-
         return render_template(
             "faculty/students.html",
             faculty=faculty,
@@ -4327,8 +3612,6 @@ def faculty_students():
     finally:
         cursor.close()
         conn.close()
-
-
 @app.route("/faculty/students/view/<int:student_id>")
 @faculty_required
 def faculty_view_student(student_id):
@@ -4336,7 +3619,6 @@ def faculty_view_student(student_id):
     if not faculty:
         flash("Faculty profile not found.", "danger")
         return redirect(url_for("faculty_students"))
-
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     try:
@@ -4361,23 +3643,15 @@ def faculty_view_student(student_id):
     finally:
         cursor.close()
         conn.close()
-
     if not student:
         flash("You cannot access this student.", "danger")
         return redirect(url_for("faculty_students"))
-
     return render_template(
         "faculty/view_student.html",
         faculty=faculty,
         profile_letter=profile_letter,
         student=student
     )
-
-
-# =========================================================
-# FACULTY ADD STUDENT
-# =========================================================
-
 @app.route("/faculty/students/add", methods=["GET", "POST"])
 @faculty_required
 def faculty_add_student():
@@ -4385,10 +3659,8 @@ def faculty_add_student():
     if not faculty or not faculty.get("class_id"):
         flash("You do not have an assigned class.", "danger")
         return redirect(url_for("faculty_dashboard"))
-
     conn=get_db_connection(); cursor=conn.cursor(dictionary=True)
     try:
-        # The faculty's department and class are always taken from the server-side assignment.
         if request.method == "GET":
             register_number=generate_faculty_register_number(cursor, faculty)
             cursor.execute("""SELECT id,register_number,student_name FROM students
@@ -4398,7 +3670,6 @@ def faculty_add_student():
             return render_template("faculty/add_student.html", faculty=faculty,
                                    profile_letter=profile_letter, register_number=register_number,
                                    students=existing_students)
-
         student_name=request.form.get("student_name","").strip()
         email=request.form.get("email","").strip()
         phone=request.form.get("phone","").strip()
@@ -4414,7 +3685,6 @@ def faculty_add_student():
         if phone and (not phone.isdigit() or len(phone)!=10):
             flash("Phone number must contain exactly 10 digits.","danger")
             return redirect(url_for("faculty_add_student"))
-
         if email:
             cursor.execute("SELECT id FROM students WHERE LOWER(email)=LOWER(%s) LIMIT 1",(email,))
             if cursor.fetchone():
@@ -4429,12 +3699,10 @@ def faculty_add_student():
             cursor.execute("SELECT id FROM faculty WHERE phone=%s LIMIT 1",(phone,))
             if cursor.fetchone():
                 flash("Phone number is already registered.","danger"); return redirect(url_for("faculty_add_student"))
-
         register_number=generate_faculty_register_number(cursor, faculty)
         cursor.execute("SELECT id FROM students WHERE register_number=%s LIMIT 1",(register_number,))
         if cursor.fetchone():
             flash("Register number collision. Please try again.","danger"); return redirect(url_for("faculty_add_student"))
-
         cursor.execute("INSERT INTO users (username,password,role) VALUES (%s,%s,'student')",
                        (register_number,generate_password_hash(login_password)))
         user_id=cursor.lastrowid
@@ -4453,11 +3721,6 @@ def faculty_add_student():
         conn.rollback(); flash(f"Unable to add student: {e}","danger"); return redirect(url_for("faculty_add_student"))
     finally:
         cursor.close(); conn.close()
-
-# =========================================================
-# FACULTY EDIT STUDENT
-# =========================================================
-
 @app.route("/faculty/students/edit/<int:student_id>", methods=["GET", "POST"])
 @faculty_required
 def faculty_edit_student(student_id):
@@ -4465,7 +3728,6 @@ def faculty_edit_student(student_id):
     if not faculty:
         flash("Faculty profile not found.", "danger")
         return redirect(url_for("faculty_students"))
-
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     try:
@@ -4489,7 +3751,6 @@ def faculty_edit_student(student_id):
         if not student:
             flash("You cannot edit this student.", "danger")
             return redirect(url_for("faculty_students"))
-
         if request.method == "GET":
             return render_template(
                 "faculty/edit_student.html",
@@ -4497,12 +3758,10 @@ def faculty_edit_student(student_id):
                 profile_letter=profile_letter,
                 student=student
             )
-
         student_name = request.form.get("student_name", "").strip()
         email = request.form.get("email", "").strip()
         phone = request.form.get("phone", "").strip()
         dob = request.form.get("dob", "").strip()
-
         if not student_name or not dob:
             flash("Student name and Date of Birth are required.", "danger")
             return redirect(url_for("faculty_edit_student", student_id=student_id))
@@ -4511,14 +3770,12 @@ def faculty_edit_student(student_id):
         except ValueError as e:
             flash(str(e), "danger")
             return redirect(url_for("faculty_edit_student", student_id=student_id))
-
         if not student_name:
             flash("Student name is required.", "danger")
             return redirect(url_for("faculty_edit_student", student_id=student_id))
         if phone and (not phone.isdigit() or len(phone) != 10):
             flash("Phone number must contain exactly 10 digits.", "danger")
             return redirect(url_for("faculty_edit_student", student_id=student_id))
-
         cursor.execute(
             """
             UPDATE students
@@ -4527,13 +3784,11 @@ def faculty_edit_student(student_id):
             """,
             (student_name, email, phone, student_id)
         )
-
         cursor.execute("UPDATE users SET username=%s, password=%s WHERE id=%s",
                        (student["register_number"], generate_password_hash(login_password), student["user_id"]))
         cursor.execute("""INSERT INTO ep_student_details(student_id,gender,dob,address)
                          VALUES(%s,NULL,%s,NULL)
                          ON DUPLICATE KEY UPDATE dob=VALUES(dob)""", (student_id,dob))
-
         conn.commit()
         flash("Student updated successfully.", "success")
         return redirect(url_for("faculty_students"))
@@ -4544,8 +3799,6 @@ def faculty_edit_student(student_id):
     finally:
         cursor.close()
         conn.close()
-
-
 @app.route("/faculty/students/delete/<int:student_id>", methods=["POST"])
 @app.route("/faculty/delete-student/<int:student_id>", methods=["POST"])
 @faculty_required
@@ -4553,14 +3806,12 @@ def faculty_delete_student(student_id):
     faculty = get_faculty()
     if not faculty:
         return redirect(url_for("faculty_students"))
-
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     try:
         if not verify_student_access(cursor, faculty, student_id):
             flash("You cannot delete this student.", "danger")
             return redirect(url_for("faculty_students"))
-
         cursor.execute("SELECT user_id FROM students WHERE id = %s LIMIT 1", (student_id,))
         row = cursor.fetchone()
         cursor.execute("DELETE FROM ep_question_marks WHERE student_id = %s", (student_id,))
@@ -4580,33 +3831,22 @@ def faculty_delete_student(student_id):
         cursor.close()
         conn.close()
     return redirect(url_for("faculty_students"))
-
-
-# =========================================================
-# FACULTY MARK ENTRY - CIA 1 / CIA 2 / EXTERNAL
-# =========================================================
-
 def _faculty_subject_context():
     """Return faculty subjects for the active year and the selected class/semester.
-
     Semester choices are class-specific, preventing a semester from another
     assigned class from producing an empty subject/student list.
     """
     faculty, profile_letter = faculty_page_data()
     if not faculty:
         return faculty, profile_letter, [], None, None, None, None
-
     selected_subject_id = request.args.get("subject_id", type=int)
     selected_class_id = request.args.get("class_id", type=int)
-
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     try:
         ay = get_active_academic_year(cursor)
         if not ay:
             return faculty, profile_letter, [], None, None, None, None
-
-        # Validate the requested class against this faculty's active assignments.
         cursor.execute("""
             SELECT DISTINCT class_id
             FROM ep_faculty_assignments
@@ -4616,8 +3856,6 @@ def _faculty_subject_context():
         valid_classes = [int(r["class_id"]) for r in cursor.fetchall()]
         if selected_class_id not in valid_classes:
             selected_class_id = valid_classes[0] if len(valid_classes) == 1 else None
-
-        # Semester list must belong to the selected class when one is selected.
         q = """
             SELECT DISTINCT a.semester_no, cs.year_no, cs.course_type,
                    COALESCE(NULLIF(a.section,''), cs.section, 'A') AS section
@@ -4636,13 +3874,11 @@ def _faculty_subject_context():
         cursor.execute(q, tuple(params))
         available = cursor.fetchall()
         valid_semesters = [int(x["semester_no"]) for x in available]
-
         sem = request.args.get("semester", type=int)
         if sem is None:
             sem = request.form.get("semester", type=int)
         if sem not in valid_semesters:
             sem = valid_semesters[0] if valid_semesters else None
-
         subjects=[]
         if sem is not None:
             query = """
@@ -4663,19 +3899,15 @@ def _faculty_subject_context():
             query += " ORDER BY c.class_name,s.subject_name"
             cursor.execute(query, tuple(params))
             subjects=cursor.fetchall()
-
         subject=None
         if selected_subject_id:
             subject=next((x for x in subjects if int(x["subject_id"])==int(selected_subject_id)), None)
             if subject is None:
                 selected_subject_id=None
-
         return faculty,profile_letter,subjects,subject,selected_subject_id,ay,sem
     finally:
         cursor.close()
         conn.close()
-
-
 def _get_mark_students(cursor, faculty, subject_id, semester_no=None, academic_year_id=None, class_id=None):
     """Fetch exactly the students mapped to the selected class/year/semester."""
     if academic_year_id and semester_no is not None:
@@ -4713,22 +3945,18 @@ def _get_mark_students(cursor, faculty, subject_id, semester_no=None, academic_y
                FROM students s LEFT JOIN marks m ON m.student_id=s.id AND m.subject_id=%s
                WHERE s.class_id=%s ORDER BY s.student_name ASC""", (subject_id, faculty.get("class_id")))
     return cursor.fetchall()
-
 def _save_partial_mark(student_id, subject_id, field, value):
     """Save only CIA1, CIA2, Assignment or External without requiring all marks."""
     allowed = {"ca1", "ca2", "assignment", "external"}
     if field not in allowed:
         raise ValueError("Invalid mark field.")
-
     faculty = get_faculty()
     if not faculty:
         raise PermissionError("Faculty profile not found.")
-
     try:
         value = float(value)
     except (TypeError, ValueError):
         raise ValueError("Enter a valid mark.")
-
     limits = {
         "ca1": 75,
         "ca2": 75,
@@ -4739,13 +3967,11 @@ def _save_partial_mark(student_id, subject_id, field, value):
         raise ValueError(
             f"{field.upper()} must be between 0 and {limits[field]}."
         )
-
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     try:
         if not verify_mark_access(cursor, faculty, student_id, subject_id):
             raise PermissionError("You cannot edit these marks.")
-
         cursor.execute(
             """
             SELECT id, ca1, ca2, assignment, external
@@ -4759,7 +3985,6 @@ def _save_partial_mark(student_id, subject_id, field, value):
             (student_id, subject_id)
         )
         mark = cursor.fetchone()
-
         values = {
             "ca1": mark["ca1"] if mark else None,
             "ca2": mark["ca2"] if mark else None,
@@ -4767,8 +3992,6 @@ def _save_partial_mark(student_id, subject_id, field, value):
             "external": mark["external"] if mark else None
         }
         values[field] = value
-
-        # Recalculate final values only when all four components exist.
         internal = total = grade = result = appreciation = None
         if all(values[x] is not None for x in ("ca1", "ca2", "assignment", "external")):
             internal, total, grade, result, appreciation = calculate_marks(
@@ -4777,7 +4000,6 @@ def _save_partial_mark(student_id, subject_id, field, value):
                 float(values["assignment"]),
                 float(values["external"])
             )
-
         if mark:
             cursor.execute(
                 """
@@ -4808,7 +4030,6 @@ def _save_partial_mark(student_id, subject_id, field, value):
                     grade, result, appreciation
                 )
             )
-
         conn.commit()
         return {
             "ca1": values["ca1"],
@@ -4830,16 +4051,12 @@ def _save_partial_mark(student_id, subject_id, field, value):
     finally:
         cursor.close()
         conn.close()
-
-
 def _cia_detail_json_path(faculty_id, subject_id, cia, academic_year_id=None, semester_no=None):
     """Path for question-wise CIA marks, isolated by academic year + semester."""
     return os.path.join(
         QUESTION_PAPER_DIR,
         _question_paper_file_key(faculty_id, subject_id, cia, academic_year_id, semester_no) + "_marks.json"
     )
-
-
 def _load_cia_detail_marks(faculty_id, subject_id, cia, academic_year_id=None, semester_no=None):
     path = _cia_detail_json_path(faculty_id, subject_id, cia, academic_year_id, semester_no)
     if not os.path.exists(path):
@@ -4850,26 +4067,19 @@ def _load_cia_detail_marks(faculty_id, subject_id, cia, academic_year_id=None, s
         return data if isinstance(data, dict) else {}
     except (OSError, json.JSONDecodeError):
         return {}
-
-
 def _save_cia_detail_marks(faculty_id, subject_id, cia, data, academic_year_id=None, semester_no=None):
     path = _cia_detail_json_path(faculty_id, subject_id, cia, academic_year_id, semester_no)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-
-
 def _cia_total_from_questions(detail):
     """Return raw CIA total /75 from 10×2 + 5×5 + exactly 3 of 5×10."""
     if not isinstance(detail, dict):
         raise ValueError("Invalid CIA mark data.")
-
     section_a = detail.get("section_a", [])
     section_b = detail.get("section_b", [])
     section_c = detail.get("section_c", [])
-
     if len(section_a) != 10 or len(section_b) != 5 or len(section_c) != 5:
         raise ValueError("CIA must contain 10 two-mark, 5 five-mark A/B choice pairs and 5 ten-mark questions.")
-
     def values(items, maximum):
         out = []
         for x in items:
@@ -4884,9 +4094,7 @@ def _cia_total_from_questions(detail):
                 raise ValueError(f"Each question mark must be between 0 and {maximum}.")
             out.append(round(n, 2))
         return out
-
     a = values(section_a, 2)
-    # Section B is 5 question pairs (A/B). Exactly ONE choice is entered for each pair.
     b_total = 0.0
     normalized_b = []
     for pair in section_b:
@@ -4894,7 +4102,6 @@ def _cia_total_from_questions(detail):
             choice = str(pair.get("choice", "")).upper().strip()
             raw_mark = pair.get("mark")
         else:
-            # Backward compatibility with the previous 5-number format.
             choice = "A"
             raw_mark = pair
         if choice not in ("A", "B"):
@@ -4909,17 +4116,12 @@ def _cia_total_from_questions(detail):
             raise ValueError("Each Section B answer has a maximum of 5 marks.")
         normalized_b.append({"choice": choice, "mark": round(n, 2)})
         b_total += n
-
     c = values(section_c, 10)
-
     if any(x is None for x in a):
         raise ValueError("Enter all Section A marks.")
     if sum(x is not None for x in c) != 3:
         raise ValueError("Section C requires exactly any 3 of the 5 questions.")
-
     return round(sum(a) + b_total + sum(x for x in c if x is not None), 2)
-
-
 def _extract_question_schema(paper):
     """Normalize saved OCR question-paper sections into question entry rows."""
     if not isinstance(paper,dict): return []
@@ -4943,13 +4145,10 @@ def _extract_question_schema(paper):
                 max_marks={0:2,1:5,2:10}.get(si,0)
             out.append({"number":number,"question":text,"max_marks":max_marks,"section":section_names[si] if si<len(section_names) else str(si+1),"co":q.get("co","") ,"k":q.get("k","")})
     if not out:
-        # Safe fallback matching the existing 75-mark college pattern. Once a
-        # question paper is uploaded, its extracted questions replace these rows.
         for i in range(1,11): out.append({"number":str(i),"question":"","max_marks":2,"section":"A","co":"","k":""})
         for i in range(11,16): out.append({"number":str(i),"question":"","max_marks":5,"section":"B","co":"","k":""})
         for i in range(16,21): out.append({"number":str(i),"question":"","max_marks":10,"section":"C","co":"","k":""})
     return out
-
 def _load_saved_question_paper(faculty_id,subject_id,cia,academic_year_id,semester_no):
     path=_question_paper_json_path(faculty_id,subject_id,cia,academic_year_id,semester_no)
     if os.path.exists(path):
@@ -4957,7 +4156,6 @@ def _load_saved_question_paper(faculty_id,subject_id,cia,academic_year_id,semest
             with open(path,"r",encoding="utf-8") as f: return json.load(f)
         except (OSError,json.JSONDecodeError): pass
     return None
-
 def _render_assessment_page(template_name, field, title, subtitle):
     faculty, profile_letter, subjects, subject, selected_subject_id, academic_year, semester_no = _faculty_subject_context()
     selected_class_id = request.args.get("class_id", type=int)
@@ -4966,7 +4164,6 @@ def _render_assessment_page(template_name, field, title, subtitle):
         return redirect(url_for("faculty_dashboard"))
     if selected_class_id is None and subject and subject.get("class_id"):
         selected_class_id = int(subject["class_id"])
-
     students = []
     detail_marks = {}
     saved_detail_students = set()
@@ -5022,7 +4219,6 @@ def _render_assessment_page(template_name, field, title, subtitle):
     else:
         saved_paper = None
     question_schema = _extract_question_schema(saved_paper)
-
     return render_template(
         template_name,
         faculty=faculty,
@@ -5040,8 +4236,6 @@ def _render_assessment_page(template_name, field, title, subtitle):
         semester_no=semester_no,
         semester_options=available, question_schema=question_schema, saved_paper=saved_paper, external_details=external_details, selected_class_id=selected_class_id
     )
-
-
 @app.route("/faculty/cia1")
 @faculty_required
 def faculty_cia1():
@@ -5051,8 +4245,6 @@ def faculty_cia1():
         "CIA 1 Mark Entry",
         "Enter CIA 1 marks out of 75. The system automatically converts them to 10 marks."
     )
-
-
 @app.route("/faculty/cia2")
 @faculty_required
 def faculty_cia2():
@@ -5062,8 +4254,6 @@ def faculty_cia2():
         "CIA 2 Mark Entry",
         "Enter CIA 2 marks out of 75. The system automatically converts them to 10 marks."
     )
-
-
 @app.route("/faculty/external")
 @faculty_required
 def faculty_external():
@@ -5073,8 +4263,6 @@ def faculty_external():
         "External Mark Entry",
         "Enter External marks question-wise. CIA 1, CIA 2 and Assignment are fetched/calculated automatically."
     )
-
-
 @app.route("/faculty/marks/save-partial", methods=["POST"])
 @faculty_required
 def faculty_save_partial_mark():
@@ -5093,8 +4281,6 @@ def faculty_save_partial_mark():
         return jsonify({"success": False, "message": "Database error: " + str(e)}), 500
     except Exception as e:
         return jsonify({"success": False, "message": "Unable to save mark: " + str(e)}), 500
-
-
 @app.route("/faculty/external/save-question-marks", methods=["POST"])
 @faculty_required
 def faculty_save_external_question_marks():
@@ -5104,24 +4290,18 @@ def faculty_save_external_question_marks():
         subject_id = int(request.form.get("subject_id", "0"))
         payload = json.loads(request.form.get("question_marks", "{}"))
         total = _cia_total_from_questions(payload)
-
         faculty = get_faculty()
         conn = get_db_connection()
         cur = conn.cursor(dictionary=True)
         try:
             if not verify_mark_access(cur, faculty, student_id, subject_id):
                 raise PermissionError("You cannot edit these marks.")
-
             ay, sem, _ = get_selected_faculty_semester(cur, faculty["faculty_id"])
             if not ay or sem is None:
                 raise ValueError("No active academic-year semester is available.")
-
-            # Store every external question separately, keyed by active year +
-            # semester, so the same pattern can be reviewed later.
             section_a = payload["section_a"]
             section_b = payload["section_b"]
             section_c = payload["section_c"]
-
             for i, mark in enumerate(section_a, 1):
                 cur.execute("""
                     INSERT INTO ep_question_marks
@@ -5131,7 +4311,6 @@ def faculty_save_external_question_marks():
                     ON DUPLICATE KEY UPDATE obtained_marks=VALUES(obtained_marks),
                     max_marks=VALUES(max_marks),choice=NULL
                 """, (student_id,subject_id,ay["id"],sem,str(i),"Section A",float(mark)))
-
             for i, pair in enumerate(section_b, 1):
                 choice = str(pair.get("choice","")).upper()
                 mark = float(pair.get("mark"))
@@ -5144,7 +4323,6 @@ def faculty_save_external_question_marks():
                     ON DUPLICATE KEY UPDATE obtained_marks=VALUES(obtained_marks),
                     max_marks=VALUES(max_marks),choice=VALUES(choice)
                 """, (student_id,subject_id,ay["id"],sem,qno,"Section B",mark,choice))
-
             for i, mark in enumerate(section_c, 1):
                 qno = str(15+i)
                 value = None if mark in (None,"") else float(mark)
@@ -5156,9 +4334,6 @@ def faculty_save_external_question_marks():
                     ON DUPLICATE KEY UPDATE obtained_marks=VALUES(obtained_marks),
                     max_marks=VALUES(max_marks),choice=NULL
                 """, (student_id,subject_id,ay["id"],sem,qno,"Section C",value))
-
-            # Keep the legacy marks table synchronized for the existing result
-            # pages. CIA values remain raw /75; assignment remains /5.
             cur.execute("""
                 SELECT id,ca1,ca2,assignment
                 FROM marks
@@ -5169,7 +4344,6 @@ def faculty_save_external_question_marks():
             ca1 = m["ca1"] if m else None
             ca2 = m["ca2"] if m else None
             assignment = m["assignment"] if m else None
-
             internal = total_final = grade = result = appreciation = None
             if all(v is not None for v in (ca1,ca2,assignment)):
                 internal = calculate_internal(float(ca1),float(ca2),float(assignment))
@@ -5187,7 +4361,6 @@ def faculty_save_external_question_marks():
                 else:
                     grade,appreciation="F","Fail"
                 result = "PASS" if total_final >= 30 else "FAIL"
-
             if m:
                 cur.execute("""
                     UPDATE marks SET external=%s,internal=%s,total=%s,
@@ -5201,7 +4374,6 @@ def faculty_save_external_question_marks():
                     VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 """, (student_id,subject_id,ca1,ca2,assignment,internal,total,
                       total_final,grade,result,appreciation))
-
             conn.commit()
             return jsonify({
                 "success":True,
@@ -5224,14 +4396,10 @@ def faculty_save_external_question_marks():
         return jsonify({"success":False,"message":str(e)}),400
     except Exception as e:
         return jsonify({"success":False,"message":"Unable to save external marks: "+str(e)}),500
-
-# Backward-compatible complete-save endpoint.
 @app.route("/faculty/marks")
 @faculty_required
 def faculty_marks():
     return redirect(url_for("faculty_cia1", subject_id=request.args.get("subject_id", type=int)))
-
-
 @app.route("/faculty/marks/submit", methods=["POST"])
 @faculty_required
 def faculty_marks_submit():
@@ -5239,7 +4407,6 @@ def faculty_marks_submit():
     faculty = get_faculty()
     if not faculty:
         return jsonify({"success": False, "message": "Faculty profile not found."}), 403
-
     try:
         student_id = int(request.form.get("student_id", "0"))
         subject_id = int(request.form.get("subject_id", "0"))
@@ -5253,13 +4420,11 @@ def faculty_marks_submit():
         )
     except (TypeError, ValueError) as e:
         return jsonify({"success": False, "message": str(e) or "Enter all marks correctly."}), 400
-
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     try:
         if not verify_mark_access(cursor, faculty, student_id, subject_id):
             return jsonify({"success": False, "message": "You cannot submit these marks."}), 403
-
         if posted_class_id is not None:
             ay_ctx, sem_ctx, _ = get_selected_faculty_semester(cursor, faculty["faculty_id"])
             cursor.execute("""
@@ -5271,7 +4436,6 @@ def faculty_marks_submit():
                   ay_ctx["id"] if ay_ctx else 0,sem_ctx or 0))
             if not cursor.fetchone():
                 return jsonify({"success": False, "message": "Class/subject is not assigned to you for the active academic year."}), 403
-
         cursor.execute(
             """
             SELECT id FROM marks
@@ -5281,7 +4445,6 @@ def faculty_marks_submit():
             (student_id, subject_id)
         )
         mark = cursor.fetchone()
-
         if mark:
             cursor.execute(
                 """
@@ -5304,7 +4467,6 @@ def faculty_marks_submit():
                 (student_id, subject_id, ca1, ca2, assignment, internal,
                  external, total, grade, result, appreciation)
             )
-
         conn.commit()
         return jsonify({
             "success": True,
@@ -5326,8 +4488,6 @@ def faculty_marks_submit():
     finally:
         cursor.close()
         conn.close()
-
-
 @app.route("/faculty/marks/edit", methods=["POST"])
 @faculty_required
 def faculty_marks_edit():
@@ -5339,7 +4499,6 @@ def faculty_marks_edit():
         subject_id = int(request.form.get("subject_id", "0"))
     except (TypeError, ValueError):
         return jsonify({"success": False, "message": "Invalid request."}), 400
-
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     try:
@@ -5349,8 +4508,6 @@ def faculty_marks_edit():
     finally:
         cursor.close()
         conn.close()
-
-
 @app.route("/faculty/cia/save-question-marks", methods=["POST"])
 @faculty_required
 def faculty_save_cia_question_marks():
@@ -5364,7 +4521,6 @@ def faculty_save_cia_question_marks():
         payload = request.form.get("question_marks", "")
         detail = json.loads(payload)
         total_raw = _cia_total_from_questions(detail)
-        # Normalize Section B A/B choice data before persisting.
         normalized_b = []
         for pair in detail.get("section_b", []):
             if isinstance(pair, dict):
@@ -5372,14 +4528,12 @@ def faculty_save_cia_question_marks():
             else:
                 normalized_b.append({"choice": "A", "mark": round(float(pair), 2)})
         detail["section_b"] = normalized_b
-
         faculty = get_faculty()
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         try:
             if not verify_mark_access(cursor, faculty, student_id, subject_id):
                 raise PermissionError("You cannot edit these marks.")
-
             ay_ctx, sem_ctx, _ = get_selected_faculty_semester(cursor, faculty["faculty_id"])
             all_details = _load_cia_detail_marks(
                 faculty["faculty_id"], subject_id, cia, ay_ctx["id"] if ay_ctx else None, sem_ctx
@@ -5388,8 +4542,6 @@ def faculty_save_cia_question_marks():
             _save_cia_detail_marks(
                 faculty["faculty_id"], subject_id, cia, all_details, ay_ctx["id"] if ay_ctx else None, sem_ctx
             )
-
-            # Persist every question mark in MySQL as well as the legacy JSON file.
             if ay_ctx and sem_ctx is not None:
                 qrows=[]
                 for idx,val in enumerate(detail.get("section_a",[]),1): qrows.append((str(idx),2,val,None))
@@ -5403,7 +4555,6 @@ def faculty_save_cia_question_marks():
                         VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                         ON DUPLICATE KEY UPDATE max_marks=VALUES(max_marks),obtained_marks=VALUES(obtained_marks),choice=VALUES(choice)
                     """,(student_id,subject_id,ay_ctx["id"],sem_ctx,cia,qno,None,qmax,float(qmark),qchoice))
-
             field = "ca1" if cia == "cia1" else "ca2"
             cursor.execute(
                 """
@@ -5424,7 +4575,6 @@ def faculty_save_cia_question_marks():
                 internal, total, grade, result, appreciation = calculate_marks(
                     float(ca1), float(ca2), float(assignment), float(external)
                 )
-
             if mark:
                 cursor.execute(
                     """
@@ -5448,14 +4598,12 @@ def faculty_save_cia_question_marks():
                      external, total, grade, result, appreciation)
                 )
             conn.commit()
-
         except Exception:
             conn.rollback()
             raise
         finally:
             cursor.close()
             conn.close()
-
         return jsonify({
             "success": True,
             "message": f"{cia.upper()} question-wise marks saved.",
@@ -5470,40 +4618,24 @@ def faculty_save_cia_question_marks():
         return jsonify({"success": False, "message": "Database error: " + str(e)}), 500
     except Exception as e:
         return jsonify({"success": False, "message": "Unable to save CIA marks: " + str(e)}), 500
-
-
-# =========================================================
-# QUESTION PAPER UPLOAD + OCR
-# =========================================================
-
 QUESTION_PAPER_DIR = os.path.join(
     app.root_path, "static", "uploads", "question_papers"
 )
 os.makedirs(QUESTION_PAPER_DIR, exist_ok=True)
-
-
 def _question_paper_file_key(faculty_id, subject_id, cia, academic_year_id=None, semester_no=None):
     suffix = f"_ay_{academic_year_id}_sem_{semester_no}" if academic_year_id and semester_no else ""
     return f"faculty_{faculty_id}_subject_{subject_id}_{cia}{suffix}"
-
-
 def _question_paper_json_path(faculty_id, subject_id, cia, academic_year_id=None, semester_no=None):
     return os.path.join(
         QUESTION_PAPER_DIR,
         _question_paper_file_key(faculty_id, subject_id, cia, academic_year_id, semester_no) + ".json"
     )
-
-
 def _question_paper_access(cursor, faculty, subject_id):
     if not faculty:
         return False
     return verify_subject_access(cursor, faculty, subject_id)
-
-
-
 def _normalize_question_paper_payload(payload):
     """Return saved QP data in one canonical 3-section shape for view/edit.
-
     This accepts current saves, older saves, nested paper_data and JSON-string
     variants so the View Extracted QP page never renders blank merely because
     a previous version used a slightly different payload structure.
@@ -5517,8 +4649,6 @@ def _normalize_question_paper_payload(payload):
             return None
     if not isinstance(payload, dict):
         return None
-
-    # Some legacy rows stored the browser payload one level deeper.
     for key in ("paper_data", "data", "payload"):
         nested = payload.get(key)
         if isinstance(nested, str):
@@ -5529,14 +4659,11 @@ def _normalize_question_paper_payload(payload):
             merged.update(nested)
             payload = merged
             break
-
     raw_sections = payload.get("sections")
     if isinstance(raw_sections, str):
         try: raw_sections = json.loads(raw_sections)
         except Exception: raw_sections = None
-
     canonical = [{"questions": []}, {"questions": []}, {"questions": []}]
-
     def section_index(name, number):
         text = str(name or "").upper()
         if "SECTION" in text or text in ("A", "B", "C"):
@@ -5548,7 +4675,6 @@ def _normalize_question_paper_payload(payload):
             return 0 if n <= 10 else 1 if n <= 15 else 2
         except Exception:
             return 0
-
     def add_question(item, fallback_section=None):
         if not isinstance(item, dict): return
         number = item.get("number", item.get("qno", item.get("question_no", "")))
@@ -5563,12 +4689,9 @@ def _normalize_question_paper_payload(payload):
             "co": str(co or ""),
             "k": str(k or "")
         })
-
     if isinstance(raw_sections, dict):
         raw_sections = [raw_sections.get(k, raw_sections.get(k.lower(), [])) for k in ("A", "B", "C")]
-
     if isinstance(raw_sections, list):
-        # If this is already a flat question list, classify each item by number.
         if raw_sections and all(isinstance(x, dict) and not isinstance(x.get("questions"), list) for x in raw_sections):
             for q in raw_sections: add_question(q)
         else:
@@ -5583,16 +4706,11 @@ def _normalize_question_paper_payload(payload):
                         except Exception: rows = []
                     if isinstance(rows, list):
                         for q in rows: add_question(q, sec.get("title", ["A","B","C"][min(i,2)]))
-
-    # Legacy top-level questions list.
     if not any(x["questions"] for x in canonical) and isinstance(payload.get("questions"), list):
         for q in payload["questions"]: add_question(q)
-
     payload = dict(payload)
     payload["sections"] = canonical
     return payload
-
-
 def _question_paper_has_questions(payload):
     """True only when the payload contains at least one real extracted question."""
     try:
@@ -5603,11 +4721,8 @@ def _question_paper_has_questions(payload):
     except Exception:
         pass
     return False
-
-
 def _normalize_saved_question_paper(payload):
     """Extra defensive normalizer used by both SAVE and VIEW.
-
     Older versions stored section rows in several shapes.  This routine walks
     nested dict/list/string JSON values and recovers question rows instead of
     returning an empty table in View Extracted QP.
@@ -5615,16 +4730,13 @@ def _normalize_saved_question_paper(payload):
     base = _normalize_question_paper_payload(payload)
     if base and _question_paper_has_questions(base):
         return base
-
     if isinstance(payload, str):
         try: payload = json.loads(payload)
         except Exception: return base
     if not isinstance(payload, (dict, list)):
         return base
-
     canonical = [{"questions": []}, {"questions": []}, {"questions": []}]
     seen=set()
-
     def add(item, fallback=None):
         if not isinstance(item, dict): return
         num=item.get("number", item.get("qno", item.get("question_no", item.get("Q.No", ""))))
@@ -5641,7 +4753,6 @@ def _normalize_saved_question_paper(payload):
         key=(idx,row['number'],row['question'],row['co'],row['k'])
         if key not in seen:
             seen.add(key); canonical[idx]['questions'].append(row)
-
     def walk(obj, fallback=None, depth=0):
         if depth>8: return
         if isinstance(obj, str):
@@ -5654,7 +4765,6 @@ def _normalize_saved_question_paper(payload):
             for x in obj: walk(x, fallback, depth+1)
             return
         if not isinstance(obj, dict): return
-        # Recognize a question row before walking children.
         keys={str(k).lower() for k in obj.keys()}
         if keys & {'question','question_text','text','questions'} and not isinstance(obj.get('questions'), list):
             add(obj, fallback)
@@ -5663,20 +4773,16 @@ def _normalize_saved_question_paper(payload):
             fb = 'A' if low in ('a','section_a','sectiona') else 'B' if low in ('b','section_b','sectionb') else 'C' if low in ('c','section_c','sectionc') else fallback
             if low in ('sections','questions','rows','items','paper_data','data','payload','section_a','section_b','section_c','a','b','c') or isinstance(val,(dict,list)):
                 walk(val, fb, depth+1)
-
     walk(payload)
     if not any(sec['questions'] for sec in canonical):
         return base
-    # Sort stable numeric order; keep Section-B A/B row order as saved.
     for sec in canonical:
         sec['questions'].sort(key=lambda q: int(re.search(r'\d+',q['number']).group()) if re.search(r'\d+',q['number']) else 999)
     meta=dict(payload) if isinstance(payload,dict) else {}
     meta['sections']=canonical
     return meta
-
 def _load_question_paper_saved_data(faculty_id, subject_id, cia, academic_year_id=None, semester_no=None):
     """Load the newest non-empty extracted QP without depending on one filename.
-
     JSON is checked first because it is the exact browser payload.  Database rows
     are then checked from newest to oldest.  Every candidate is normalized and
     rejected unless it contains real question text, preventing blank rows in
@@ -5700,7 +4806,6 @@ def _load_question_paper_saved_data(faculty_id, subject_id, cia, academic_year_i
                 return candidate
         except Exception:
             continue
-
     conn=None; cur=None
     try:
         conn=get_db_connection(); cur=conn.cursor(dictionary=True)
@@ -5712,7 +4817,6 @@ def _load_question_paper_saved_data(faculty_id, subject_id, cia, academic_year_i
             if candidate and _question_paper_has_questions(candidate):
                 return candidate
     except Exception:
-        # Compatibility with old schemas that may not have created_at/id in the expected shape.
         try:
             if cur: cur.close()
             if conn: conn.close()
@@ -5732,8 +4836,6 @@ def _load_question_paper_saved_data(faculty_id, subject_id, cia, academic_year_i
             if conn: conn.close()
         except Exception: pass
     return None
-
-
 @app.route("/faculty/question-paper/data")
 @faculty_required
 def faculty_question_paper_data():
@@ -5767,8 +4869,6 @@ def faculty_question_paper_data():
     if not saved:
         return jsonify({"success":False,"message":"No saved extracted questions found."}), 404
     return jsonify({"success":True,"paper":saved})
-
-
 @app.route("/faculty/question-paper")
 @faculty_required
 def faculty_question_paper():
@@ -5776,14 +4876,11 @@ def faculty_question_paper():
     if not faculty:
         flash("Faculty profile not found.", "danger")
         return redirect(url_for("faculty_dashboard"))
-
     selected_subject_id = request.args.get("subject_id", type=int)
-    # View mode displays the saved extracted question data and never opens the original PDF.
     view_mode = request.args.get("view", "0") == "1"
     cia = request.args.get("cia", "cia1").lower()
     if cia not in ("cia1", "cia2", "external"):
         cia = "cia1"
-
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     try:
@@ -5801,16 +4898,12 @@ def faculty_question_paper():
     finally:
         cursor.close()
         conn.close()
-
-    # Load one real, non-empty saved extraction. This helper searches the exact JSON
-    # plus legacy filenames and DB rows, so View mode never falls back to empty rows.
     saved = None
     if selected_subject_id:
         saved = _load_question_paper_saved_data(
             faculty["faculty_id"], selected_subject_id, cia,
             academic_year["id"] if academic_year else None, semester_no
         )
-
     return render_template(
         "faculty/question_paper.html",
         faculty=faculty,
@@ -5825,21 +4918,17 @@ def faculty_question_paper():
         semester_options=semester_options,
         view_mode=view_mode
     )
-
-
 @app.route("/faculty/question-paper/save", methods=["POST"])
 @faculty_required
 def faculty_question_paper_save():
     faculty = get_faculty()
     if not faculty:
         return jsonify({"success": False, "message": "Faculty profile not found."}), 403
-
     try:
         subject_id = int(request.form.get("subject_id", "0"))
         cia = request.form.get("cia", "cia1").lower()
         if cia not in ("cia1", "cia2", "external"):
             raise ValueError("Invalid examination selection.")
-
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         try:
@@ -5848,25 +4937,19 @@ def faculty_question_paper_save():
         finally:
             cursor.close()
             conn.close()
-
         data_text = request.form.get("paper_data", "{}")
         data = json.loads(data_text)
-        # Canonicalize browser rows before persistence so View and Edit always
-        # read the same Section A/B/C structure that was displayed after OCR.
         data = _normalize_saved_question_paper(data) or data
         if not _question_paper_has_questions(data):
             raise ValueError("No extracted questions to save. Please scan the question paper and verify the question rows before saving.")
         data["cia"] = cia
         data["subject_id"] = subject_id
-        # Semester is part of the saved question-paper identity.
         conn_sem=get_db_connection(); cur_sem=conn_sem.cursor(dictionary=True)
         try:
             ay, sem, _ = get_selected_faculty_semester(cur_sem, faculty["faculty_id"])
             data["academic_year_id"] = ay["id"] if ay else None
             data["academic_year"] = ay["year_name"] if ay else data.get("academic_year", "")
             data["semester_no"] = sem
-            # Do not depend on classes.year_no: older databases do not have that column.
-            # The authoritative class year is stored in ep_class_semesters.
             cur_sem.execute("""SELECT c.class_name, cs.year_no, d.department_name, s.subject_code, s.subject_name
                                FROM ep_faculty_assignments a
                                INNER JOIN classes c ON c.id=a.class_id
@@ -5887,13 +4970,11 @@ def faculty_question_paper_save():
         data["subject_code"]=meta["subject_code"]
         data["subject_name"]=meta["subject_name"]
         data["semester"]=str(sem or "")
-        # Class year is authoritative and auto-fetched; OCR cannot override it.
         data["year"]=str(meta.get("year_no") or ((int(sem)+1)//2 if sem else ""))
         data["duration"]="3 Hours"
         data["entered_date"]=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         data["exam_name"]={"cia1":"CIA 1","cia2":"CIA 2","external":"External"}[cia]
         data["saved_at"] = datetime.now().isoformat(timespec="seconds")
-
         upload = request.files.get("question_paper")
         if upload and upload.filename:
             safe = secure_filename(upload.filename)
@@ -5906,32 +4987,23 @@ def faculty_question_paper_save():
                 "static",
                 filename=f"uploads/question_papers/{filename}"
             )
-
         with open(
             _question_paper_json_path(faculty["faculty_id"], subject_id, cia, data.get("academic_year_id"), data.get("semester_no")),
             "w",
             encoding="utf-8"
         ) as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-
         conn2=get_db_connection(); cur2=conn2.cursor()
         try:
             cur2.execute("""INSERT INTO ep_question_papers(faculty_id,subject_id,academic_year_id,semester_no,cia,file_path,paper_json) VALUES(%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE file_path=VALUES(file_path),paper_json=VALUES(paper_json),created_at=CURRENT_TIMESTAMP""",(faculty["faculty_id"],subject_id,data.get("academic_year_id") or 0,data.get("semester_no") or 0,cia,data.get("original_file"),json.dumps(data,ensure_ascii=False)))
             conn2.commit()
         finally:
             cur2.close(); conn2.close()
-
         return jsonify({"success": True, "message": f"{cia.upper()} question paper saved successfully.", "view_url": url_for("faculty_question_paper", subject_id=subject_id, cia=cia, semester=data.get("semester_no"), view=1)})
     except (ValueError, json.JSONDecodeError) as e:
         return jsonify({"success": False, "message": str(e)}), 400
     except Exception as e:
         return jsonify({"success": False, "message": "Unable to save question paper: " + str(e)}), 500
-
-
-# =========================================================
-# VIEW MARKS
-# =========================================================
-
 @app.route("/faculty/view-marks")
 @faculty_required
 def faculty_view_marks():
@@ -5942,11 +5014,9 @@ def faculty_view_marks():
     if not faculty:
         flash("Faculty profile not found.", "danger")
         return redirect(url_for("faculty_dashboard"))
-
     selected_department_id = request.args.get("department_id", type=int)
     selected_class_id = request.args.get("class_id", type=int)
     selected_subject_id = request.args.get("subject_id", type=int)
-
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     try:
@@ -5957,12 +5027,7 @@ def faculty_view_marks():
         students = []
         semester_no = request.args.get("semester", type=int)
         semester_options = []
-
         if academic_year:
-            # Faculty may be assigned to multiple departments. Fetch ALL
-            # departments represented by this faculty's ACTIVE-YEAR class
-            # assignments. Do not use faculty.department_id here because that
-            # field represents only the primary department.
             cursor.execute("""
                 SELECT DISTINCT
                     d.id, d.department_name, d.department_code
@@ -5974,12 +5039,9 @@ def faculty_view_marks():
                 ORDER BY d.department_name
             """, (faculty["faculty_id"], academic_year["id"]))
             departments = cursor.fetchall()
-
             valid_departments = {int(x["id"]) for x in departments}
             if selected_department_id not in valid_departments:
                 selected_department_id = None
-
-            # Class list is unlocked only after department selection.
             if selected_department_id:
                 cursor.execute("""
                     SELECT DISTINCT
@@ -5996,12 +5058,9 @@ def faculty_view_marks():
                     selected_department_id
                 ))
                 classes = cursor.fetchall()
-
                 valid_classes = {int(x["class_id"]) for x in classes}
                 if selected_class_id not in valid_classes:
                     selected_class_id = None
-
-            # Semester list is unlocked only after class selection.
             if selected_department_id and selected_class_id:
                 cursor.execute("""
                     SELECT DISTINCT
@@ -6023,12 +5082,9 @@ def faculty_view_marks():
                     academic_year["id"], selected_department_id
                 ))
                 semester_options = cursor.fetchall()
-
                 valid_semesters = {int(x["semester_no"]) for x in semester_options}
                 if semester_no not in valid_semesters:
                     semester_no = None
-
-                # Subject list is unlocked only after semester selection.
                 if semester_no is not None:
                     cursor.execute("""
                         SELECT DISTINCT
@@ -6051,12 +5107,9 @@ def faculty_view_marks():
                         selected_department_id
                     ))
                     subjects = cursor.fetchall()
-
                     valid_subjects = {int(x["subject_id"]) for x in subjects}
                     if selected_subject_id not in valid_subjects:
                         selected_subject_id = None
-
-            # Load students only after all four selections are valid.
             if selected_department_id and selected_class_id and selected_subject_id and semester_no is not None:
                 cursor.execute("""
                     SELECT
@@ -6097,7 +5150,6 @@ def faculty_view_marks():
                     selected_subject_id, selected_department_id
                 ))
                 students = cursor.fetchall()
-
         return render_template(
             "faculty/view_marks.html",
             faculty=faculty,
@@ -6116,53 +5168,22 @@ def faculty_view_marks():
     finally:
         cursor.close()
         conn.close()
-
-
-# =========================================================
-# END FACULTY MODULE
-# =========================================================
-
-
-# =========================================================
-# STUDENT MODULE
-# =========================================================
-
 from functools import wraps
-
-
-# =========================================================
-# STUDENT AUTHORIZATION
-# =========================================================
-
 def student_required(f):
-
     @wraps(f)
     def decorated_function(*args, **kwargs):
-
         if "user_id" not in session:
             flash("Please login first.", "warning")
             return redirect(url_for("login"))
-
         if session.get("role") != "student":
             flash("You are not authorized to access this page.", "danger")
             return redirect(url_for("login"))
-
         return f(*args, **kwargs)
-
     return decorated_function
-
-
-# =========================================================
-# GET LOGGED-IN STUDENT
-# =========================================================
-
 def get_student():
-
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
-
     try:
-
         cursor.execute("""
             SELECT
                 s.id AS student_id,
@@ -6173,32 +5194,26 @@ def get_student():
                 s.phone,
                 s.department_id,
                 s.class_id,
-
                 d.department_name,
                 d.department_code,
-
                 c.class_name,
-
                 u.username
-
             FROM students s
-
             LEFT JOIN departments d
                 ON s.department_id = d.id
-
             LEFT JOIN classes c
                 ON s.class_id = c.id
-
             LEFT JOIN users u
                 ON s.user_id = u.id
-
             WHERE s.user_id = %s
         """, (session.get("user_id"),))
-
         student = cursor.fetchone()
         if student:
-            cursor.execute("SELECT course_type,start_year,end_year,course_duration FROM ep_department_batches WHERE department_id=%s LIMIT 1", (student["department_id"],))
-            batch = cursor.fetchone()
+            try:
+                cursor.execute("SELECT course_type,start_year,end_year,course_duration FROM ep_department_batches WHERE department_id=%s LIMIT 1", (student["department_id"],))
+                batch = cursor.fetchone()
+            except mysql.connector.Error:
+                batch = None
             if batch:
                 context = _academic_context(batch, student.get("class_name"))
                 student["academic_batch"] = context["batch"]
@@ -6209,17 +5224,9 @@ def get_student():
                 student["current_academic_year"] = None
                 student["current_year"] = _year_label_for_class(student.get("class_name"))
         return student
-
     finally:
-
         cursor.close()
         conn.close()
-
-
-# =========================================================
-# STUDENT DASHBOARD
-# =========================================================
-
 @app.route("/student/dashboard")
 @student_required
 def student_dashboard():
@@ -6230,15 +5237,12 @@ def student_dashboard():
         if not student:
             flash("Student profile not found.", "danger")
             return redirect(url_for("login"))
-
-        # The dashboard is intentionally simple: welcome + current academic details.
         cursor.execute("""
             SELECT COUNT(DISTINCT semester_no) AS semester_count
             FROM ep_student_semesters
             WHERE student_id=%s
         """, (student["student_id"],))
         semester_count = int((cursor.fetchone() or {}).get("semester_count") or 0)
-
         return render_template(
             "student/dashboard.html",
             student=student,
@@ -6247,98 +5251,59 @@ def student_dashboard():
     finally:
         cursor.close()
         conn.close()
-
-
-# =========================================================
-# STUDENT PROFILE
-# =========================================================
-
 @app.route("/student/profile")
 @student_required
 def student_profile():
-
     student = get_student()
-
     if not student:
-
         flash(
             "Student profile not found.",
             "danger"
         )
-
         return redirect(
             url_for("student_dashboard")
         )
-
     return render_template(
         "student/profile.html",
         student=student
     )
-
-
-# =========================================================
-# STUDENT SUBJECTS
-# =========================================================
-
 @app.route("/student/subjects")
 @student_required
 def student_subjects():
-
     student = get_student()
-
     if not student:
-
         flash(
             "Student profile not found.",
             "danger"
         )
-
         return redirect(
             url_for("student_dashboard")
         )
-
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
-
     try:
-
         cursor.execute("""
             SELECT
                 s.id AS subject_id,
                 s.subject_code,
                 s.subject_name
-
             FROM subjects s
-
             INNER JOIN class_subjects cs
                 ON s.id = cs.subject_id
-
             WHERE cs.class_id = %s
-
             ORDER BY s.subject_name
         """, (
             student["class_id"],
         ))
-
         subjects = cursor.fetchall()
-
-
         return render_template(
             "student/subjects.html",
             student=student,
             subjects=subjects
         )
-
     finally:
-
         cursor.close()
         conn.close()
-
-
-# =========================================================
-# STUDENT MARKS
-# =========================================================
-
 @app.route("/student/marks")
 @student_required
 def student_marks():
@@ -6346,11 +5311,9 @@ def student_marks():
     if not student:
         flash("Student profile not found.", "danger")
         return redirect(url_for("student_dashboard"))
-
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     try:
-        # Students may view every semester, regardless of the currently active academic year.
         cursor.execute("""
             SELECT DISTINCT
                 es.semester_no, es.year_no, es.academic_year_id, es.class_id,
@@ -6368,7 +5331,6 @@ def student_marks():
             ORDER BY es.academic_year_id DESC, es.semester_no
         """, (student["student_id"],))
         student_semesters = cursor.fetchall()
-
         selected_semester = request.args.get("semester", type=int)
         active_year = get_active_academic_year(cursor)
         active_maps = [
@@ -6393,14 +5355,12 @@ def student_marks():
                 selected_semester = int(marked_semester["semester_no"]) if marked_semester else int(active_maps[-1]["semester_no"])
             elif valid:
                 selected_semester = valid[-1]
-
         selected_map = None
         if selected_semester is not None:
             selected_map = next(
                 (x for x in student_semesters if int(x["semester_no"]) == selected_semester),
                 None
             )
-
         marks = []
         if selected_map:
             cursor.execute("""
@@ -6431,7 +5391,6 @@ def student_marks():
                 selected_map["academic_year_id"], selected_semester
             ))
             marks = cursor.fetchall()
-
         completed = [float(r["total"]) for r in marks if r.get("total") is not None]
         average_percentage = round(sum(completed) / len(completed), 2) if completed else None
         if average_percentage is None:
@@ -6448,8 +5407,6 @@ def student_marks():
             appreciation = "Satisfactory"
         else:
             appreciation = "Improve"
-
-        # Add a simple performance band used by the UI/chart.
         for row in marks:
             total = row.get("total")
             if total is None:
@@ -6460,7 +5417,6 @@ def student_marks():
                 row["performance"] = "moderate"
             else:
                 row["performance"] = "weak"
-
         return render_template(
             "student/marks.html",
             student=student,
@@ -6475,23 +5431,11 @@ def student_marks():
     finally:
         cursor.close()
         conn.close()
-
-
-# =========================================================
-# STUDENT RESULTS
-# =========================================================
-
 @app.route("/student/results")
 @student_required
 def student_results():
     semester = request.args.get("semester", type=int)
     return redirect(url_for("student_marks", semester=semester) if semester else url_for("student_marks"))
-
-
-# =========================================================
-# SIMPLE PROGRESS CARD PDF GENERATOR (FACULTY + STUDENT)
-# =========================================================
-
 def build_progress_card_pdf(student, results):
     buffer=BytesIO()
     doc=SimpleDocTemplate(buffer,pagesize=landscape(A4),rightMargin=28,leftMargin=28,topMargin=28,bottomMargin=28)
@@ -6509,8 +5453,6 @@ def build_progress_card_pdf(student, results):
     if len(data)==1: data.append([Paragraph(x,cell_style) for x in ["-","-","No marks available","-","-","-","-","-"]])
     table=Table(data,colWidths=[42,90,245,90,90,90,60,65],repeatRows=1)
     table.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),colors.HexColor("#1f416d")),("GRID",(0,0),(-1,-1),0.55,colors.HexColor("#d4dde7")),("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#f7f9fc")]),("VALIGN",(0,0),(-1,-1),"MIDDLE"),("ALIGN",(0,0),(-1,-1),"CENTER"),("TOPPADDING",(0,0),(-1,-1),8),("BOTTOMPADDING",(0,0),(-1,-1),8)]))
-
-    # Overall average and appreciation are shown below the marks table.
     completed_totals = [float(r.get("total")) for r in results if r.get("total") is not None]
     average_percentage = round(sum(completed_totals) / len(completed_totals), 2) if completed_totals else 0.0
     if not completed_totals:
@@ -6527,7 +5469,6 @@ def build_progress_card_pdf(student, results):
         appreciation = "Needs Improvement"
     else:
         appreciation = "Fail"
-
     summary_label = ParagraphStyle("EPSummaryLabel", parent=styles["Normal"], fontSize=12, leading=15, alignment=TA_CENTER, textColor=colors.HexColor("#123b78"), spaceBefore=12)
     summary_table = Table([[
         Paragraph(f"<b>Average Percentage: {average_percentage:.2f}%</b>", summary_label),
@@ -6541,19 +5482,16 @@ def build_progress_card_pdf(student, results):
         ("TOPPADDING", (0,0), (-1,-1), 9),
         ("BOTTOMPADDING", (0,0), (-1,-1), 9),
     ]))
-
     elems.append(table)
     elems.append(Spacer(1, 8))
     elems.append(summary_table)
     doc.build(elems); buffer.seek(0); return buffer
-
 def fetch_student_results_for_pdf(cursor, student_id):
     cursor.execute("""SELECT s.id,s.register_number,s.student_name,s.email,s.phone,d.department_name,d.department_code,c.class_name,s.class_id FROM students s LEFT JOIN departments d ON d.id=s.department_id LEFT JOIN classes c ON c.id=s.class_id WHERE s.id=%s LIMIT 1""",(student_id,))
     student=cursor.fetchone()
     if not student: return None,[]
     cursor.execute("""SELECT sub.subject_code,sub.subject_name,m.internal,m.external,m.total,m.grade,m.result FROM marks m INNER JOIN subjects sub ON sub.id=m.subject_id WHERE m.student_id=%s ORDER BY sub.subject_name""",(student_id,))
     return student,cursor.fetchall()
-
 @app.route("/student/progress-card/pdf")
 @student_required
 def student_progress_card_pdf():
@@ -6561,7 +5499,6 @@ def student_progress_card_pdf():
     if not semester:
         flash("Please select a semester before generating the PDF.", "warning")
         return redirect(url_for("student_marks"))
-
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     try:
@@ -6569,7 +5506,6 @@ def student_progress_card_pdf():
         if not student:
             flash("Student profile not found.", "danger")
             return redirect(url_for("student_dashboard"))
-
         cursor.execute("""
             SELECT es.academic_year_id, es.class_id, ay.year_name
             FROM ep_student_semesters es
@@ -6582,7 +5518,6 @@ def student_progress_card_pdf():
         if not sem:
             flash("Selected semester is not available.", "warning")
             return redirect(url_for("student_marks"))
-
         cursor.execute("""
             SELECT
                 sub.subject_code,
@@ -6613,7 +5548,6 @@ def student_progress_card_pdf():
     finally:
         cursor.close()
         conn.close()
-
 @app.route("/faculty/students/<int:student_id>/progress-card/pdf")
 @faculty_required
 def faculty_progress_card_pdf(student_id):
@@ -6625,115 +5559,73 @@ def faculty_progress_card_pdf(student_id):
         student,results=fetch_student_results_for_pdf(cursor,student_id); pdf=build_progress_card_pdf(student,results)
         return send_file(pdf,mimetype="application/pdf",as_attachment=True,download_name=f"{student['register_number']}_Progress_Card.pdf")
     finally: cursor.close(); conn.close()
-
-# =========================================================
-# STUDENT CHANGE PASSWORD
-# =========================================================
-
 @app.route(
     "/student/change-password",
     methods=["GET", "POST"]
 )
 @student_required
 def student_change_password():
-
     student = get_student()
-
     if not student:
-
         flash(
             "Student profile not found.",
             "danger"
         )
-
         return redirect(
             url_for("student_dashboard")
         )
-
-
     if request.method == "POST":
-
         current_password = request.form.get(
             "current_password",
             ""
         )
-
         new_password = request.form.get(
             "new_password",
             ""
         )
-
         confirm_password = request.form.get(
             "confirm_password",
             ""
         )
-
-
-        # -------------------------------------------------
-        # VALIDATION
-        # -------------------------------------------------
-
         if not current_password:
-
             flash(
                 "Enter your current password.",
                 "danger"
             )
-
             return render_template(
                 "student/change_password.html",
                 student=student
             )
-
-
         if not new_password:
-
             flash(
                 "Enter a new password.",
                 "danger"
             )
-
             return render_template(
                 "student/change_password.html",
                 student=student
             )
-
-
         if len(new_password) < 6:
-
             flash(
                 "New password must contain at least 6 characters.",
                 "danger"
             )
-
             return render_template(
                 "student/change_password.html",
                 student=student
             )
-
-
         if new_password != confirm_password:
-
             flash(
                 "New passwords do not match.",
                 "danger"
             )
-
             return render_template(
                 "student/change_password.html",
                 student=student
             )
-
-
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-
         try:
-
-            # -------------------------------------------------
-            # GET CURRENT PASSWORD
-            # -------------------------------------------------
-
             cursor.execute("""
                 SELECT password
                 FROM users
@@ -6742,111 +5634,65 @@ def student_change_password():
             """, (
                 session["user_id"],
             ))
-
             user = cursor.fetchone()
-
-
             if not user:
-
                 flash(
                     "Student account not found.",
                     "danger"
                 )
-
                 return render_template(
                     "student/change_password.html",
                     student=student
                 )
-
-
-            # -------------------------------------------------
-            # CHECK PASSWORD
-            # -------------------------------------------------
-
             if not check_password_hash(
                 user["password"],
                 current_password
             ):
-
                 flash(
                     "Current password is incorrect.",
                     "danger"
                 )
-
                 return render_template(
                     "student/change_password.html",
                     student=student
                 )
-
-
-            # -------------------------------------------------
-            # HASH NEW PASSWORD
-            # -------------------------------------------------
-
             password_hash = generate_password_hash(
                 new_password
             )
-
-
-            # -------------------------------------------------
-            # UPDATE
-            # -------------------------------------------------
-
             cursor.execute("""
                 UPDATE users
-
                 SET password = %s
-
                 WHERE id = %s
-
                 AND role = 'student'
             """, (
                 password_hash,
                 session["user_id"]
             ))
-
-
             conn.commit()
-
-
             flash(
                 "Password changed successfully.",
                 "success"
             )
-
             return redirect(
                 url_for("student_dashboard")
             )
-
-
         except mysql.connector.Error:
-
             conn.rollback()
-
             flash(
                 "Unable to change password.",
                 "danger"
             )
-
             return render_template(
                 "student/change_password.html",
                 student=student
             )
-
         finally:
-
             cursor.close()
             conn.close()
-
-
     return render_template(
         "student/change_password.html",
         student=student
     )
-# ============================================================
-# RUN APPLICATION
-# ============================================================
-
 if __name__ == "__main__":
     app.run(
         host=os.environ.get("HOST", "127.0.0.1"),

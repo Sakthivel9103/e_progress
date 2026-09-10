@@ -1,9 +1,0 @@
-CREATE TABLE IF NOT EXISTS result_settings (
-    id INT PRIMARY KEY,
-    visibility TINYINT(1) NOT NULL DEFAULT 0,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        ON UPDATE CURRENT_TIMESTAMP
-);
-INSERT INTO result_settings (id, visibility)
-VALUES (1, 0)
-ON DUPLICATE KEY UPDATE id = id;
