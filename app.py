@@ -636,8 +636,9 @@ def _ensure_multi_semester_layer():
                 cur.close()
                 conn.close()
         except Exception:
-            # Do not prevent the old application from loading if MySQL is temporarily unavailable.
-            pass
+            # Log the real cause so Railway logs show why Faculty/Student pages
+            # failed, while still keeping the app available during temporary DB issues.
+            app.logger.exception("Database initialization failed during request handling.")
 
 
 def _active_academic_start_year(cursor):
